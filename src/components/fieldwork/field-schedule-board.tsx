@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   startOfWeek, addDays, addWeeks, subWeeks,
@@ -114,106 +114,6 @@ function SurveyorSummary({ entries }: { entries: ScheduleEntryFull[] }) {
           )
         })}
       </div>
-    </div>
-  )
-}
-
-// ─── Info popover (shows details + other scheduled days) ─────────────────────
-function InfoPopover({
-  entry,
-  allEntries,
-  onEdit,
-  canEdit,
-}: {
-  entry: ScheduleEntryFull
-  allEntries: ScheduleEntryFull[]
-  onEdit: () => void
-  canEdit: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  const otherDays = allEntries
-    .filter(e =>
-      e.id !== entry.id &&
-      e.project_id === entry.project_id &&
-      (entry.task_id ? e.task_id === entry.task_id : true)
-    )
-    .sort((a, b) => a.date.localeCompare(b.date))
-
-  useEffect(() => {
-    if (!open) return
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [open])
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="p-0.5 text-slate-300 hover:text-blue-500 transition-colors"
-        title="View details"
-      >
-        <Info className="h-3.5 w-3.5" />
-      </button>
-
-      {open && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-xl text-xs">
-
-          {/* Task + due date */}
-          {entry.project_tasks && (
-            <div className="px-3.5 py-3 border-b border-slate-100">
-              <p className="font-semibold text-slate-700">{entry.project_tasks.title}</p>
-              {entry.project_tasks.due_date && (
-                <p className="text-slate-400 mt-0.5">
-                  Due: {format(parseISO(entry.project_tasks.due_date), 'd MMM yyyy')}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Notes */}
-          {entry.notes && (
-            <div className="px-3.5 py-3 border-b border-slate-100">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Notes</p>
-              <p className="text-slate-600 whitespace-pre-wrap">{entry.notes}</p>
-            </div>
-          )}
-
-          {/* Other scheduled days */}
-          <div className="px-3.5 py-3 border-b border-slate-100">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Also Scheduled</p>
-            {otherDays.length === 0 ? (
-              <p className="text-slate-400 italic">No other days in this window.</p>
-            ) : (
-              <div className="space-y-1">
-                {otherDays.map(e => (
-                  <div key={e.id} className="flex items-center justify-between">
-                    <span className="text-slate-700 font-medium">{format(parseISO(e.date), 'EEE d MMM')}</span>
-                    <span className="text-slate-400">
-                      {e.hours ?? 0}h{e.time_of_day ? ` ${e.time_of_day.toUpperCase()}` : ''}
-                      {e.field_surveyors.length > 0 && ` · ${e.field_surveyors.map(s => s.full_name.split(' ')[0]).join(', ')}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Footer link */}
-          <div className="px-3.5 py-2.5">
-            <button
-              onClick={() => { setOpen(false); onEdit() }}
-              className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
-            >
-              {canEdit ? 'Edit entry →' : 'View details →'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -605,12 +505,13 @@ export function FieldScheduleBoard({
                             {proj?.job_number ?? '—'}
                           </td>
                           <td className="px-1 py-2.5">
-                            <InfoPopover
-                              entry={entry}
-                              allEntries={initialEntries}
-                              onEdit={() => openEdit(entry)}
-                              canEdit={canEdit}
-                            />
+                            <button
+                              onClick={() => openEdit(entry)}
+                              className="p-0.5 text-slate-300 hover:text-blue-500 transition-colors"
+                              title={canEdit ? 'Edit entry' : 'View entry'}
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
                           </td>
                           <td className="px-4 py-2.5 text-slate-700 text-xs whitespace-nowrap">
                             {entry.project_tasks?.title ?? '—'}
