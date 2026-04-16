@@ -34,6 +34,7 @@ export default async function MyWorkPage() {
     { data: timeEntries },
     { data: activeProjects },
     { data: projectRates },
+    { data: allProjectTasks },
   ] = await Promise.all([
     // 1. My assigned tasks with project + client info
     db.from('task_assignments')
@@ -65,6 +66,12 @@ export default async function MyWorkPage() {
     db.from('project_staff_rates')
       .select('project_id, hourly_rate')
       .eq('staff_id', myProfile.id),
+
+    // 5. All active tasks for active projects (for "select existing task" in quick-add)
+    db.from('project_tasks')
+      .select('id, project_id, title, status, fee_type, due_date, description')
+      .not('status', 'in', '("completed","cancelled")')
+      .order('title'),
   ])
 
   // Aggregate hours by task_id
@@ -114,6 +121,15 @@ export default async function MyWorkPage() {
       projectRates={(projectRates ?? []).map((r: any) => ({
         projectId: r.project_id,
         hourlyRate: r.hourly_rate,
+      }))}
+      allProjectTasks={(allProjectTasks ?? []).map((t: any) => ({
+        id: t.id,
+        projectId: t.project_id,
+        title: t.title,
+        status: t.status,
+        feeType: t.fee_type,
+        dueDate: t.due_date,
+        description: t.description,
       }))}
     />
   )

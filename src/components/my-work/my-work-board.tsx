@@ -52,11 +52,22 @@ export interface ProjectRate {
   hourlyRate: number
 }
 
+export interface ExistingTask {
+  id: string
+  projectId: string
+  title: string
+  status: string
+  feeType: string
+  dueDate: string | null
+  description: string | null
+}
+
 interface Props {
   myProfile: { id: string; fullName: string; defaultHourlyRate: number }
   tasks: MyTask[]
   activeProjects: ActiveProject[]
   projectRates: ProjectRate[]
+  allProjectTasks: ExistingTask[]
 }
 
 type FilterTab = 'active' | 'completed' | 'all'
@@ -74,7 +85,7 @@ const STATUS_ORDER: Record<string, number> = {
   cancelled: 4,
 }
 
-export function MyWorkBoard({ myProfile, tasks: initialTasks, activeProjects, projectRates }: Props) {
+export function MyWorkBoard({ myProfile, tasks: initialTasks, activeProjects, projectRates, allProjectTasks }: Props) {
   const router = useRouter()
   const [tasks, setTasks] = useState(initialTasks)
   const [filter, setFilter] = useState<FilterTab>('active')
@@ -326,6 +337,8 @@ export function MyWorkBoard({ myProfile, tasks: initialTasks, activeProjects, pr
         open={showQuickAdd}
         onOpenChange={setShowQuickAdd}
         projects={activeProjects}
+        allProjectTasks={allProjectTasks}
+        myTaskIds={tasks.map(t => t.taskId)}
         staffId={myProfile.id}
         onTaskAdded={handleTaskAdded}
       />
