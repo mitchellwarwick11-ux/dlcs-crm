@@ -149,41 +149,7 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-
-        {/* Project */}
-        <div className="space-y-1">
-          <Label>Project <span className="text-red-500">*</span></Label>
-          <select
-            {...register('project_id', { onChange: handleProjectChange })}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="">— Select project —</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.job_number} — {p.title}
-              </option>
-            ))}
-          </select>
-          {errors.project_id && (
-            <p className="text-xs text-red-600">{errors.project_id.message}</p>
-          )}
-        </div>
-
-        {/* Task — disabled until project selected */}
-        <div className="space-y-1">
-          <Label>Task</Label>
-          <select
-            {...register('task_id')}
-            disabled={!selectedProjectId}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
-          >
-            <option value="">— No task —</option>
-            {projectTasks.map(t => (
-              <option key={t.id} value={t.id}>{t.title}</option>
-            ))}
-          </select>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         {/* Staff */}
         <div className="space-y-1">
@@ -211,6 +177,25 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
           )}
         </div>
 
+        {/* Project */}
+        <div className="space-y-1">
+          <Label>Project <span className="text-red-500">*</span></Label>
+          <select
+            {...register('project_id', { onChange: handleProjectChange })}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="">— Select project —</option>
+            {projects.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.job_number} — {p.title}
+              </option>
+            ))}
+          </select>
+          {errors.project_id && (
+            <p className="text-xs text-red-600">{errors.project_id.message}</p>
+          )}
+        </div>
+
         {/* Hours */}
         <div className="space-y-1">
           <Label>Hours <span className="text-red-500">*</span></Label>
@@ -233,9 +218,24 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
           ) : null}
         </div>
 
-        {/* Notes */}
+        {/* Task — disabled until project selected */}
         <div className="space-y-1">
-          <Label>Notes</Label>
+          <Label>Task</Label>
+          <select
+            {...register('task_id')}
+            disabled={!selectedProjectId}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
+          >
+            <option value="">— No task —</option>
+            {projectTasks.map(t => (
+              <option key={t.id} value={t.id}>{t.title}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Task Description */}
+        <div className="space-y-1">
+          <Label>Task Description</Label>
           <Input
             {...register('description')}
             placeholder="Optional description of work done"
