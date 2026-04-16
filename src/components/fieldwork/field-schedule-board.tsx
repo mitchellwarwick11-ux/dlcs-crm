@@ -277,6 +277,97 @@ function SurveyorSelect({
   )
 }
 
+// ─── Inline Hours + AM/PM editor ────────────────────────────────────────
+function HoursCell({
+  entry,
+  onSave,
+  disabled,
+}: {
+  entry: ScheduleEntryFull
+  onSave: (entryId: string, hours: number | null, timeOfDay: 'am' | 'pm' | null) => Promise<void>
+  disabled?: boolean
+}) {
+  const [value, setValue] = useState(entry.hours != null ? String(entry.hours) : '')
+  const [saving, setSaving] = useState(false)
+
+  // Sync local state if the entry changes externally (e.g. router.refresh)
+  useEffect(() => {
+    setValue(entry.hours != null ? String(entry.hours) : '')
+  }, [entry.hours])
+
+  async function saveHours() {
+    const next = value === '' ? null : parseFloat(value)
+    const prev = entry.hours ?? null
+    // Skip no-op
+    if (next === prev) return
+    if (next !== null && (isNaN(next) || next < 0)) {
+      setValue(entry.hours != null ? String(entry.hours) : '')
+      return
+    }
+    setSaving(true)
+    await onSave(entry.id, next, entry.time_of_day ?? null)
+    setSaving(false)
+  }
+
+  async function saveTimeOfDay(tod: 'am' | 'pm' | null) {
+    if ((entry.time_of_day ?? null) === tod) return
+    setSaving(true)
+    await onSave(entry.id, entry.hours ?? null, tod)
+    setSaving(false)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur()
+    } else if (e.key === 'Escape') {
+      setValue(entry.hours != null ? String(entry.hours) : '')
+      e.currentTarget.blur()
+    }
+  }
+
+  if (saving) return <span className="text-xs text-slate-400">Saving…</span>
+
+  const btnBase   = 'px-1.5 py-0.5 text-[10px] font-semibold transition-colors'
+  const btnActive = 'bg-blue-600 text-white'
+  const btnIdle   = 'bg-white text-slate-500 hover:bg-slate-100'
+
+  return (
+    <div className={`inline-flex items-center gap-1.5 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+      <input
+        type="number"
+        min="0"
+        step="0.5"
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onBlur={saveHours}
+        onKeyDown={handleKeyDown}
+        placeholder="—"
+        className="w-12 text-sm tabular-nums text-right text-slate-700 border border-slate-200 bg-white rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-slate-300"
+      />
+      <div className="inline-flex rounded border border-slate-200 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => saveTimeOfDay('am')}
+          className={`${btnBase} ${entry.time_of_day === 'am' ? btnActive : btnIdle}`}
+          title="Morning"
+        >AM</button>
+        <button
+          type="button"
+          onClick={() => saveTimeOfDay('pm')}
+          className={`${btnBase} border-l border-slate-200 ${entry.time_of_day === 'pm' ? btnActive : btnIdle}`}
+          title="Afternoon"
+        >PM</button>
+        <button
+          type="button"
+          onClick={() => saveTimeOfDay(null)}
+          className={`${btnBase} border-l border-slate-200 ${entry.time_of_day == null ? 'bg-slate-200 text-slate-700' : btnIdle}`}
+          title="Any time"
+        >—</button>
+      </div>
+    </div>
+  )
+}
+
 function SortIcon({ col, sortCol, sortDir }: { col: SortCol; sortCol: SortCol | null; sortDir: SortDir }) {
   if (sortCol !== col) return <ChevronsUpDown className="h-3 w-3 ml-1 text-slate-300" />
   return sortDir === 'asc'
@@ -337,6 +428,18 @@ export function FieldScheduleBoard({
         surveyorIds.map(id => ({ entry_id: entryId, staff_id: id }))
       )
     }
+    router.refresh()
+  }
+
+  async function updateHoursAndTime(
+    entryId: string,
+    hours: number | null,
+    timeOfDay: 'am' | 'pm' | null,
+  ) {
+    const db = supabase as any
+    await db.from('field_schedule_entries')
+      .update({ hours, time_of_day: timeOfDay })
+      .eq('id', entryId)
     router.refresh()
   }
 
@@ -513,17 +616,8 @@ export function FieldScheduleBoard({
                             {entry.project_tasks?.title ?? '—'}
                           </td>
                           <td className="px-4 py-2.5 text-slate-600 text-xs">{resourceNames}</td>
-                          <td className="px-4 py-2.5 text-slate-700 tabular-nums whitespace-nowrap">
-                            {entry.hours != null ? (
-                              <>
-                                {entry.hours}h
-                                {entry.time_of_day && (
-                                  <sup className="ml-0.5 text-[9px] font-semibold text-slate-400 uppercase">
-                                    {entry.time_of_day}
-                                  </sup>
-                                )}
-                              </>
-                            ) : '—'}
+                          <td className="px-4 py-2.5 whitespace-nowrap">
+                            <HoursCell entry={entry} onSave={updateHoursAndTime} disabled={!canEdit} />
                           </td>
                           <td className="px-4 py-2.5">
                             <SurveyorSelect entry={entry} allStaff={allStaff} onSave={updateSurveyors} />

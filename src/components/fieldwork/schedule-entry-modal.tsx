@@ -66,7 +66,7 @@ function GroupedSurveyorSelect({
   }
 
   return (
-    <div className={`border border-slate-200 rounded-md max-h-48 overflow-y-auto ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+    <div className={`border border-slate-200 rounded-md max-h-36 overflow-y-auto ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
       {fieldGroup.length > 0 && (
         <>
           <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wider sticky top-0 z-10">
@@ -297,31 +297,30 @@ export function ScheduleEntryModal({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/40 z-40"
+        className="fixed inset-0 bg-black/30 z-40"
         onClick={() => onOpenChange(false)}
       />
 
-      {/* Centered dialog */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-        <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col pointer-events-auto">
+      {/* Slide-over panel */}
+      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-xl flex flex-col">
 
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
-            <h2 className="text-base font-semibold text-slate-900">
-              {isEdit
-                ? (ro ? 'Schedule Entry' : 'Edit Schedule Entry')
-                : 'Add Schedule Entry'}
-            </h2>
-            <button
-              onClick={() => onOpenChange(false)}
-              className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
+          <h2 className="text-lg font-semibold text-slate-900">
+            {isEdit
+              ? (ro ? 'Schedule Entry' : 'Edit Schedule Entry')
+              : 'Add Schedule Entry'}
+          </h2>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-          {/* Scrollable body */}
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        {/* Scrollable body */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
             {/* Project */}
             <div>
@@ -375,56 +374,56 @@ export function ScheduleEntryModal({
               />
             </div>
 
-            {/* Date | Status */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="se-date">Date</Label>
-                <Input
-                  id="se-date"
-                  type="date"
-                  value={date}
-                  onChange={e => setDate(e.target.value)}
-                  disabled={ro}
-                  required={!ro}
-                  className="mt-1 disabled:bg-slate-50"
-                />
-              </div>
-              <div>
-                <Label htmlFor="se-status">Status</Label>
-                <select
-                  id="se-status"
-                  value={status}
-                  onChange={e => setStatus(e.target.value as FieldScheduleStatus)}
-                  disabled={ro}
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:bg-slate-50 disabled:text-slate-500"
-                >
-                  {STATUS_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
+            {/* Date */}
+            <div>
+              <Label htmlFor="se-date">Date</Label>
+              <Input
+                id="se-date"
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                disabled={ro}
+                required={!ro}
+                className="mt-1 disabled:bg-slate-50"
+              />
             </div>
 
-            {/* Hours | AM/PM */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="se-hours">Hours</Label>
-                <Input
-                  id="se-hours"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  placeholder="e.g. 4"
-                  value={hours}
-                  onChange={e => setHours(e.target.value)}
-                  disabled={ro}
-                  className="mt-1 disabled:bg-slate-50"
-                />
-              </div>
-              <div>
-                <Label className="block mb-1.5">Time of Day</Label>
-                <TimeOfDayToggle value={timeOfDay} onChange={setTimeOfDay} disabled={ro} />
-              </div>
+            {/* Status */}
+            <div>
+              <Label htmlFor="se-status">Status</Label>
+              <select
+                id="se-status"
+                value={status}
+                onChange={e => setStatus(e.target.value as FieldScheduleStatus)}
+                disabled={ro}
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:bg-slate-50 disabled:text-slate-500"
+              >
+                {STATUS_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Hours */}
+            <div>
+              <Label htmlFor="se-hours">Hours</Label>
+              <Input
+                id="se-hours"
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder="e.g. 4"
+                value={hours}
+                onChange={e => setHours(e.target.value)}
+                disabled={ro}
+                className="mt-1 disabled:bg-slate-50"
+              />
+            </div>
+
+            {/* Time of Day */}
+            <div>
+              <Label className="block mb-1.5">Time of Day</Label>
+              <TimeOfDayToggle value={timeOfDay} onChange={setTimeOfDay} disabled={ro} />
             </div>
 
             {/* Office Surveyor */}
@@ -521,7 +520,6 @@ export function ScheduleEntryModal({
             </div>
           </div>
 
-        </div>
       </div>
     </>
   )
