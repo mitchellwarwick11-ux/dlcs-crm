@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { format, parseISO, isPast, isThisWeek } from 'date-fns'
@@ -18,26 +18,29 @@ import {
   Clock,
   ExternalLink,
   Search,
-  ChevronsUpDown,
-  ChevronUp,
   ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
-import { QuickAddTaskForm } from './quick-add-task-form'
+import { AddItemForm } from './add-item-form'
 import { InlineTimeLog } from './inline-time-log'
 
-export interface MyTask {
-  taskId: string
+export interface MyItem {
+  itemId: string
   title: string
   description: string | null
   status: string
-  feeType: string
   dueDate: string | null
+  sortOrder: number
+  taskId: string
+  taskTitle: string
+  taskStatus: string
+  taskFeeType: string
   projectId: string
   jobNumber: string
   projectTitle: string
   projectStatus: string
   clientName: string | null
-  totalHoursLogged: number
+  taskHoursLogged: number
 }
 
 export interface ActiveProject {
@@ -47,181 +50,185 @@ export interface ActiveProject {
   clientName: string | null
 }
 
+export interface ActiveTask {
+  id: string
+  projectId: string
+  title: string
+  feeType: string
+}
+
 export interface ProjectRate {
   projectId: string
   hourlyRate: number
 }
 
-export interface ExistingTask {
-  id: string
-  projectId: string
-  title: string
-  status: string
-  feeType: string
-  dueDate: string | null
-  description: string | null
-}
-
 interface Props {
   myProfile: { id: string; fullName: string; defaultHourlyRate: number }
-  tasks: MyTask[]
+  items: MyItem[]
   activeProjects: ActiveProject[]
+  activeTasks: ActiveTask[]
   projectRates: ProjectRate[]
-  allProjectTasks: ExistingTask[]
 }
 
 type FilterTab = 'active' | 'completed' | 'all'
-type SortCol = 'due_date' | 'job_number' | 'status' | 'task' | 'client' | 'hours'
-type SortDir = 'asc' | 'desc'
 
 const ACTIVE_STATUSES = ['not_started', 'in_progress', 'on_hold']
 const ACTIVE_PROJECT_STATUSES = ['active', 'on_hold']
 
-const STATUS_ORDER: Record<string, number> = {
-  in_progress: 0,
-  not_started: 1,
-  on_hold: 2,
-  completed: 3,
-  cancelled: 4,
-}
-
-export function MyWorkBoard({ myProfile, tasks: initialTasks, activeProjects, projectRates, allProjectTasks }: Props) {
+export function MyWorkBoard({
+  myProfile,
+  items: initialItems,
+  activeProjects,
+  activeTasks,
+  projectRates,
+}: Props) {
   const router = useRouter()
-  const [tasks, setTasks] = useState(initialTasks)
+  const [items, setItems] = useState(initialItems)
   const [filter, setFilter] = useState<FilterTab>('active')
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortCol, setSortCol] = useState<SortCol>('due_date')
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [expandedTimeLogId, setExpandedTimeLogId] = useState<string | null>(null)
-  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [showAddItem, setShowAddItem] = useState(false)
+  const [collapsedJobs, setCollapsedJobs] = useState<Set<string>>(new Set())
+  const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set())
 
-  // Filter
-  const filtered = tasks.filter(t => {
+  // Filter items
+  const filtered = items.filter(it => {
     if (filter === 'active') {
-      if (!ACTIVE_STATUSES.includes(t.status)) return false
-      if (!ACTIVE_PROJECT_STATUSES.includes(t.projectStatus)) return false
+      if (!ACTIVE_STATUSES.includes(it.status)) return false
+      if (!ACTIVE_PROJECT_STATUSES.includes(it.projectStatus)) return false
     } else if (filter === 'completed') {
-      if (t.status !== 'completed') return false
+      if (it.status !== 'completed') return false
     }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
-      const matches = [t.title, t.jobNumber, t.projectTitle, t.clientName ?? '']
-        .some(v => v.toLowerCase().includes(q))
-      if (!matches) return false
+      const hay = [it.title, it.taskTitle, it.jobNumber, it.projectTitle, it.clientName ?? '']
+      if (!hay.some(v => v.toLowerCase().includes(q))) return false
     }
 
     return true
   })
 
-  // Sort
-  function getSortValue(t: MyTask): string | number {
-    switch (sortCol) {
-      case 'due_date':
-        return t.dueDate ?? '9999-12-31'
-      case 'job_number':
-        return t.jobNumber
-      case 'status':
-        return STATUS_ORDER[t.status] ?? 99
-      case 'task':
-        return t.title
-      case 'client':
-        return t.clientName ?? ''
-      case 'hours':
-        return t.totalHoursLogged
-    }
-  }
+  // Group into Job → Task → Items
+  const jobGroups = useMemo(() => {
+    const byJob = new Map<string, {
+      jobId: string
+      jobNumber: string
+      projectTitle: string
+      clientName: string | null
+      tasks: Map<string, {
+        taskId: string
+        taskTitle: string
+        taskFeeType: string
+        taskHoursLogged: number
+        items: MyItem[]
+      }>
+    }>()
 
-  const sorted = [...filtered].sort((a, b) => {
-    const av = getSortValue(a)
-    const bv = getSortValue(b)
-    let cmp = 0
-    if (typeof av === 'number' && typeof bv === 'number') {
-      cmp = av - bv
-    } else {
-      cmp = String(av).localeCompare(String(bv), undefined, { sensitivity: 'base', numeric: true })
+    for (const it of filtered) {
+      if (!byJob.has(it.projectId)) {
+        byJob.set(it.projectId, {
+          jobId: it.projectId,
+          jobNumber: it.jobNumber,
+          projectTitle: it.projectTitle,
+          clientName: it.clientName,
+          tasks: new Map(),
+        })
+      }
+      const job = byJob.get(it.projectId)!
+      if (!job.tasks.has(it.taskId)) {
+        job.tasks.set(it.taskId, {
+          taskId: it.taskId,
+          taskTitle: it.taskTitle,
+          taskFeeType: it.taskFeeType,
+          taskHoursLogged: it.taskHoursLogged,
+          items: [],
+        })
+      }
+      job.tasks.get(it.taskId)!.items.push(it)
     }
-    return sortDir === 'asc' ? cmp : -cmp
-  })
 
-  function handleSort(col: SortCol) {
-    if (sortCol === col) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortCol(col)
-      setSortDir('asc')
-    }
-  }
+    // Sort items by sort_order then title; sort tasks + jobs alphabetically
+    const jobs = Array.from(byJob.values())
+      .map(job => ({
+        ...job,
+        tasks: Array.from(job.tasks.values())
+          .map(t => ({
+            ...t,
+            items: [...t.items].sort((a, b) =>
+              a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)
+            ),
+          }))
+          .sort((a, b) => a.taskTitle.localeCompare(b.taskTitle)),
+      }))
+      .sort((a, b) => b.jobNumber.localeCompare(a.jobNumber, undefined, { numeric: true }))
+    return jobs
+  }, [filtered])
+
+  // Stats
+  const activeItemCount = items.filter(it =>
+    ACTIVE_STATUSES.includes(it.status) && ACTIVE_PROJECT_STATUSES.includes(it.projectStatus)
+  ).length
+  const dueThisWeekCount = items.filter(it =>
+    it.dueDate && ACTIVE_STATUSES.includes(it.status)
+    && isThisWeek(parseISO(it.dueDate), { weekStartsOn: 1 })
+  ).length
 
   // Status cycling
-  async function cycleStatus(taskId: string, currentStatus: string) {
-    const cycleList = TASK_STATUS_CYCLE
-    const currentIdx = cycleList.indexOf(currentStatus as TaskStatus)
-    const nextStatus = currentIdx === -1 || currentIdx === cycleList.length - 1
-      ? cycleList[0]
-      : cycleList[currentIdx + 1]
+  async function cycleStatus(itemId: string, currentStatus: string) {
+    const list = TASK_STATUS_CYCLE
+    const idx = list.indexOf(currentStatus as TaskStatus)
+    const next = idx === -1 || idx === list.length - 1 ? list[0] : list[idx + 1]
 
-    setTasks(prev => prev.map(t =>
-      t.taskId === taskId ? { ...t, status: nextStatus } : t
+    setItems(prev => prev.map(it =>
+      it.itemId === itemId ? { ...it, status: next } : it
     ))
 
-    const supabase = createClient()
-    const { error } = await (supabase as any)
-      .from('project_tasks')
-      .update({ status: nextStatus })
-      .eq('id', taskId)
+    const db = createClient() as any
+    const { error } = await db.from('task_items').update({ status: next }).eq('id', itemId)
 
     if (error) {
-      setTasks(prev => prev.map(t =>
-        t.taskId === taskId ? { ...t, status: currentStatus } : t
+      setItems(prev => prev.map(it =>
+        it.itemId === itemId ? { ...it, status: currentStatus } : it
       ))
     } else {
       router.refresh()
     }
   }
 
-  // Task added callback
-  function handleTaskAdded(newTask: MyTask) {
-    setTasks(prev => [newTask, ...prev])
+  function handleItemAdded(newItem: MyItem) {
+    setItems(prev => [newItem, ...prev])
   }
 
-  // Time logged callback
   function handleTimeLogged(taskId: string, hours: number) {
-    setTasks(prev => prev.map(t =>
-      t.taskId === taskId ? { ...t, totalHoursLogged: t.totalHoursLogged + hours } : t
+    setItems(prev => prev.map(it =>
+      it.taskId === taskId
+        ? { ...it, taskHoursLogged: it.taskHoursLogged + hours }
+        : it
     ))
     setExpandedTimeLogId(null)
   }
 
-  // Stats
-  const activeCount = tasks.filter(t => ACTIVE_STATUSES.includes(t.status) && ACTIVE_PROJECT_STATUSES.includes(t.projectStatus)).length
-  const dueThisWeek = tasks.filter(t =>
-    t.dueDate && ACTIVE_STATUSES.includes(t.status) && isThisWeek(parseISO(t.dueDate), { weekStartsOn: 1 })
-  ).length
-
-  function SortIcon({ col }: { col: SortCol }) {
-    if (sortCol !== col) return <ChevronsUpDown className="h-3 w-3 ml-1 text-slate-300" />
-    return sortDir === 'asc'
-      ? <ChevronUp className="h-3 w-3 ml-1 text-slate-600" />
-      : <ChevronDown className="h-3 w-3 ml-1 text-slate-600" />
+  function toggleJob(jobId: string) {
+    setCollapsedJobs(prev => {
+      const next = new Set(prev)
+      if (next.has(jobId)) next.delete(jobId)
+      else next.add(jobId)
+      return next
+    })
   }
 
-  function ThSort({ col, children, className = '' }: { col: SortCol; children: React.ReactNode; className?: string }) {
-    return (
-      <th
-        className={`text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide cursor-pointer select-none hover:text-slate-700 hover:bg-slate-100 transition-colors ${className}`}
-        onClick={() => handleSort(col)}
-      >
-        <span className="inline-flex items-center">
-          {children}
-          <SortIcon col={col} />
-        </span>
-      </th>
-    )
+  function toggleTask(taskId: string) {
+    setCollapsedTasks(prev => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
   }
 
   const filterTabs: { key: FilterTab; label: string; count?: number }[] = [
-    { key: 'active', label: 'Active', count: activeCount },
+    { key: 'active', label: 'Active', count: activeItemCount },
     { key: 'completed', label: 'Completed' },
     { key: 'all', label: 'All' },
   ]
@@ -233,15 +240,15 @@ export function MyWorkBoard({ myProfile, tasks: initialTasks, activeProjects, pr
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">My Work</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {activeCount} active task{activeCount !== 1 ? 's' : ''}
-            {dueThisWeek > 0 && (
-              <span className="ml-2 text-amber-600 font-medium">{dueThisWeek} due this week</span>
+            {activeItemCount} active item{activeItemCount !== 1 ? 's' : ''}
+            {dueThisWeekCount > 0 && (
+              <span className="ml-2 text-amber-600 font-medium">{dueThisWeekCount} due this week</span>
             )}
           </p>
         </div>
-        <Button onClick={() => setShowQuickAdd(true)}>
+        <Button onClick={() => setShowAddItem(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          Quick Add Task
+          Add Item
         </Button>
       </div>
 
@@ -272,84 +279,130 @@ export function MyWorkBoard({ myProfile, tasks: initialTasks, activeProjects, pr
           <Input
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search tasks, jobs, clients…"
+            placeholder="Search items, tasks, jobs, clients…"
             className="pl-9"
           />
         </div>
       </div>
 
-      {/* Table */}
-      {sorted.length === 0 ? (
+      {/* Hierarchy */}
+      {jobGroups.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-white p-12 text-center">
           <p className="text-slate-500 text-sm">
-            {filter === 'active' ? 'No active tasks assigned to you.' : 'No tasks found.'}
+            {filter === 'active' ? 'No active items assigned to you.' : 'No items found.'}
           </p>
-          <Button variant="outline" className="mt-4" onClick={() => setShowQuickAdd(true)}>
+          <Button variant="outline" className="mt-4" onClick={() => setShowAddItem(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Add a Task
+            Add your first Item
           </Button>
         </div>
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <ThSort col="job_number" className="whitespace-nowrap">Job #</ThSort>
-                  <ThSort col="client">Client</ThSort>
-                  <ThSort col="task">Task</ThSort>
-                  <ThSort col="status">Status</ThSort>
-                  <ThSort col="due_date" className="whitespace-nowrap">Due Date</ThSort>
-                  <ThSort col="hours">Hours</ThSort>
-                  <th className="px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {sorted.map(task => {
-                  const isOverdue = task.dueDate
-                    && isPast(parseISO(task.dueDate))
-                    && ACTIVE_STATUSES.includes(task.status)
+        <div className="space-y-4">
+          {jobGroups.map(job => {
+            const isJobCollapsed = collapsedJobs.has(job.jobId)
+            return (
+              <div key={job.jobId} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                {/* Job header */}
+                <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-100">
+                  <button
+                    onClick={() => toggleJob(job.jobId)}
+                    className="flex items-center gap-2 min-w-0 text-left"
+                  >
+                    {isJobCollapsed
+                      ? <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
+                      : <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />
+                    }
+                    <Link
+                      href={`/projects/${job.jobNumber}/details`}
+                      onClick={e => e.stopPropagation()}
+                      className="font-mono font-medium text-sm text-slate-900 hover:underline shrink-0"
+                    >
+                      {job.jobNumber}
+                    </Link>
+                    <span className="text-sm text-slate-700 truncate">{job.projectTitle}</span>
+                  </button>
+                  {job.clientName && (
+                    <span className="text-xs text-slate-500 truncate ml-4">{job.clientName}</span>
+                  )}
+                </div>
 
-                  return (
-                    <TaskRows
-                      key={task.taskId}
-                      task={task}
-                      isOverdue={!!isOverdue}
-                      expandedTimeLogId={expandedTimeLogId}
-                      onCycleStatus={() => cycleStatus(task.taskId, task.status)}
-                      onToggleTimeLog={() =>
-                        setExpandedTimeLogId(prev => prev === task.taskId ? null : task.taskId)
-                      }
-                      myProfile={myProfile}
-                      projectRates={projectRates}
-                      onTimeLogged={handleTimeLogged}
-                    />
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                {/* Tasks */}
+                {!isJobCollapsed && (
+                  <div className="divide-y divide-slate-100">
+                    {job.tasks.map(task => {
+                      const isTaskCollapsed = collapsedTasks.has(task.taskId)
+                      const activeItemsInTask = task.items.filter(it => ACTIVE_STATUSES.includes(it.status)).length
+                      return (
+                        <div key={task.taskId}>
+                          {/* Task header */}
+                          <button
+                            onClick={() => toggleTask(task.taskId)}
+                            className="w-full flex items-center justify-between px-5 py-2.5 hover:bg-slate-50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {isTaskCollapsed
+                                ? <ChevronRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                : <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                              }
+                              <span className="text-sm font-medium text-slate-800 truncate">{task.taskTitle}</span>
+                              <span className="text-xs text-slate-400 shrink-0">
+                                · {task.items.length} item{task.items.length !== 1 ? 's' : ''}
+                                {activeItemsInTask !== task.items.length && ` (${activeItemsInTask} active)`}
+                              </span>
+                            </div>
+                            {task.taskHoursLogged > 0 && (
+                              <span className="text-xs text-slate-500 tabular-nums shrink-0">
+                                {task.taskHoursLogged}h logged
+                              </span>
+                            )}
+                          </button>
+
+                          {/* Items in task */}
+                          {!isTaskCollapsed && (
+                            <div className="divide-y divide-slate-50 bg-slate-50/30">
+                              {task.items.map(item => (
+                                <ItemRow
+                                  key={item.itemId}
+                                  item={item}
+                                  expandedTimeLogId={expandedTimeLogId}
+                                  onCycleStatus={() => cycleStatus(item.itemId, item.status)}
+                                  onToggleTimeLog={() =>
+                                    setExpandedTimeLogId(prev => prev === item.itemId ? null : item.itemId)
+                                  }
+                                  myProfile={myProfile}
+                                  projectRates={projectRates}
+                                  onTimeLogged={handleTimeLogged}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* Quick Add slide-over */}
-      <QuickAddTaskForm
-        open={showQuickAdd}
-        onOpenChange={setShowQuickAdd}
+      {/* Add Item slide-over */}
+      <AddItemForm
+        open={showAddItem}
+        onOpenChange={setShowAddItem}
         projects={activeProjects}
-        allProjectTasks={allProjectTasks}
-        myTaskIds={tasks.map(t => t.taskId)}
+        tasks={activeTasks}
         staffId={myProfile.id}
-        onTaskAdded={handleTaskAdded}
+        onItemAdded={handleItemAdded}
       />
     </div>
   )
 }
 
-// Extracted row + optional inline time log row
-function TaskRows({
-  task,
-  isOverdue,
+// ─── Individual item row ─────────────────────────────────────────────────
+function ItemRow({
+  item,
   expandedTimeLogId,
   onCycleStatus,
   onToggleTimeLog,
@@ -357,8 +410,7 @@ function TaskRows({
   projectRates,
   onTimeLogged,
 }: {
-  task: MyTask
-  isOverdue: boolean
+  item: MyItem
   expandedTimeLogId: string | null
   onCycleStatus: () => void
   onToggleTimeLog: () => void
@@ -366,81 +418,75 @@ function TaskRows({
   projectRates: ProjectRate[]
   onTimeLogged: (taskId: string, hours: number) => void
 }) {
-  const statusLabel = TASK_STATUSES[task.status as TaskStatus] ?? task.status
-  const statusColour = TASK_STATUS_COLOURS[task.status] ?? 'bg-slate-100 text-slate-600'
+  const statusLabel = TASK_STATUSES[item.status as TaskStatus] ?? item.status
+  const statusColour = TASK_STATUS_COLOURS[item.status] ?? 'bg-slate-100 text-slate-600'
+  const isOverdue = item.dueDate
+    && isPast(parseISO(item.dueDate))
+    && ACTIVE_STATUSES.includes(item.status)
+  const isExpanded = expandedTimeLogId === item.itemId
 
   return (
     <>
-      <tr className="hover:bg-slate-50 transition-colors">
-        <td className="px-4 py-3 font-mono font-medium text-slate-900 whitespace-nowrap">
-          <Link href={`/projects/${task.jobNumber}/tasks`} className="hover:underline">
-            {task.jobNumber}
-          </Link>
-        </td>
-        <td className="px-4 py-3 text-slate-600 text-xs truncate max-w-[140px]">
-          {task.clientName ?? '—'}
-        </td>
-        <td className="px-4 py-3 text-slate-900">
-          <div className="max-w-[240px]">
-            <p className="truncate font-medium text-sm">{task.title}</p>
-            {task.description && (
-              <p className="truncate text-xs text-slate-400 mt-0.5">{task.description}</p>
-            )}
-          </div>
-        </td>
-        <td className="px-4 py-3">
+      <div className="flex items-center gap-3 px-5 py-2.5 pl-11 hover:bg-slate-50 transition-colors">
+        {/* Status badge (clickable) */}
+        <button
+          onClick={onCycleStatus}
+          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity shrink-0 ${statusColour}`}
+          title="Click to change status"
+        >
+          {statusLabel}
+        </button>
+
+        {/* Title + description */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-slate-800 truncate">{item.title}</p>
+          {item.description && (
+            <p className="text-xs text-slate-400 truncate mt-0.5">{item.description}</p>
+          )}
+        </div>
+
+        {/* Due date */}
+        <div className={`text-xs whitespace-nowrap shrink-0 ${isOverdue ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
+          {item.dueDate ? format(parseISO(item.dueDate), 'd MMM yyyy') : '—'}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={onCycleStatus}
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity ${statusColour}`}
-            title="Click to change status"
+            onClick={onToggleTimeLog}
+            className={`p-1.5 rounded transition-colors ${
+              isExpanded
+                ? 'bg-blue-100 text-blue-700'
+                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+            }`}
+            title="Log time (goes to parent Task)"
           >
-            {statusLabel}
+            <Clock className="h-4 w-4" />
           </button>
-        </td>
-        <td className={`px-4 py-3 text-xs whitespace-nowrap ${isOverdue ? 'text-red-600 font-medium' : 'text-slate-600'}`}>
-          {task.dueDate ? format(parseISO(task.dueDate), 'd MMM yyyy') : '—'}
-        </td>
-        <td className="px-4 py-3 text-slate-700 tabular-nums whitespace-nowrap">
-          {task.totalHoursLogged > 0 ? `${task.totalHoursLogged}h` : '—'}
-        </td>
-        <td className="px-4 py-3">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onToggleTimeLog}
-              className={`p-1.5 rounded transition-colors ${
-                expandedTimeLogId === task.taskId
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-              }`}
-              title="Log time"
-            >
-              <Clock className="h-4 w-4" />
-            </button>
-            <Link
-              href={`/projects/${task.jobNumber}/tasks`}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-              title="Go to project tasks"
-            >
-              <ExternalLink className="h-4 w-4" />
-            </Link>
-          </div>
-        </td>
-      </tr>
-      {expandedTimeLogId === task.taskId && (
-        <tr className="bg-blue-50/50">
-          <td colSpan={7} className="px-4 py-3">
-            <InlineTimeLog
-              taskId={task.taskId}
-              projectId={task.projectId}
-              staffId={myProfile.id}
-              defaultHourlyRate={myProfile.defaultHourlyRate}
-              feeType={task.feeType}
-              projectRates={projectRates}
-              onLogged={(hours) => onTimeLogged(task.taskId, hours)}
-              onCancel={() => onToggleTimeLog()}
-            />
-          </td>
-        </tr>
+          <Link
+            href={`/projects/${item.jobNumber}/tasks`}
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+            title="Go to project tasks"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </Link>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="px-5 pl-11 py-3 bg-blue-50/50">
+          <InlineTimeLog
+            taskId={item.taskId}
+            projectId={item.projectId}
+            staffId={myProfile.id}
+            defaultHourlyRate={myProfile.defaultHourlyRate}
+            feeType={item.taskFeeType}
+            projectRates={projectRates}
+            defaultDescription={item.title}
+            onLogged={(hrs) => onTimeLogged(item.taskId, hrs)}
+            onCancel={() => onToggleTimeLog()}
+          />
+        </div>
       )}
     </>
   )

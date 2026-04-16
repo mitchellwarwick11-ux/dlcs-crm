@@ -394,3 +394,24 @@ export type FeeProposalTemplate = Database['public']['Tables']['fee_proposal_tem
 export type ProjectTaskWithDefinition = ProjectTask & {
   task_definitions: Pick<TaskDefinition, 'id' | 'name'> | null
 }
+
+// ─── Task Items (sub-units of work within a task) ────────────────────────
+export interface TaskItem {
+  id: string
+  task_id: string
+  title: string
+  description: string | null
+  status: TaskStatus
+  due_date: string | null
+  sort_order: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TaskItemAssignment {
+  id: string
+  item_id: string
+  staff_id: string
+  created_at: string
+}

@@ -30,46 +30,48 @@ export default async function MyWorkPage() {
 
   // Parallel data fetches
   const [
-    { data: assignments },
+    { data: itemAssignments },
     { data: timeEntries },
     { data: activeProjects },
     { data: projectRates },
-    { data: allProjectTasks },
+    { data: allActiveTasks },
   ] = await Promise.all([
-    // 1. My assigned tasks with project + client info
-    db.from('task_assignments')
+    // 1. My assigned items (with full hierarchy: item → task → project → client)
+    db.from('task_item_assignments')
       .select(`
-        id, estimated_hours,
-        project_tasks (
-          id, title, description, status, fee_type, quoted_amount, due_date,
-          project_id,
-          projects (
-            id, job_number, title, status,
-            clients ( name, company_name )
+        id,
+        task_items (
+          id, title, description, status, due_date, sort_order, task_id,
+          project_tasks (
+            id, title, status, fee_type, project_id,
+            projects (
+              id, job_number, title, status,
+              clients ( name, company_name )
+            )
           )
         )
       `)
       .eq('staff_id', myProfile.id),
 
-    // 2. My time entries (for hours aggregation per task)
+    // 2. My time entries (for per-task hours aggregation)
     db.from('time_entries')
       .select('task_id, hours')
       .eq('staff_id', myProfile.id),
 
-    // 3. Active projects for quick-add dropdown
+    // 3. Active projects for add-item form
     db.from('projects')
       .select('id, job_number, title, clients ( name, company_name )')
       .in('status', ['active', 'on_hold'])
       .order('job_number', { ascending: false }),
 
-    // 4. Project-specific rate overrides for this user
+    // 4. Project-specific rate overrides for this user (for inline time log)
     db.from('project_staff_rates')
       .select('project_id, hourly_rate')
       .eq('staff_id', myProfile.id),
 
-    // 5. All active tasks for active projects (for "select existing task" in quick-add)
+    // 5. All active tasks (for add-item form's Task dropdown)
     db.from('project_tasks')
-      .select('id, project_id, title, status, fee_type, due_date, description')
+      .select('id, project_id, title, fee_type')
       .not('status', 'in', '("completed","cancelled")')
       .order('title'),
   ])
@@ -81,26 +83,31 @@ export default async function MyWorkPage() {
     hoursMap.set(te.task_id, (hoursMap.get(te.task_id) ?? 0) + Number(te.hours ?? 0))
   }
 
-  // Flatten task_assignments into MyTask[]
-  const tasks = (assignments ?? [])
-    .filter((a: any) => a.project_tasks?.projects)
+  // Flatten items from assignments
+  const items = (itemAssignments ?? [])
+    .filter((a: any) => a.task_items?.project_tasks?.projects)
     .map((a: any) => {
-      const t = a.project_tasks
-      const p = t.projects
-      const c = p.clients
+      const item = a.task_items
+      const task = item.project_tasks
+      const proj = task.projects
+      const client = proj.clients
       return {
-        taskId: t.id,
-        title: t.title,
-        description: t.description,
-        status: t.status,
-        feeType: t.fee_type,
-        dueDate: t.due_date,
-        projectId: p.id,
-        jobNumber: p.job_number,
-        projectTitle: p.title,
-        projectStatus: p.status,
-        clientName: c ? (c.company_name ?? c.name) : null,
-        totalHoursLogged: hoursMap.get(t.id) ?? 0,
+        itemId: item.id,
+        title: item.title,
+        description: item.description,
+        status: item.status,
+        dueDate: item.due_date,
+        sortOrder: item.sort_order,
+        taskId: task.id,
+        taskTitle: task.title,
+        taskStatus: task.status,
+        taskFeeType: task.fee_type,
+        projectId: proj.id,
+        jobNumber: proj.job_number,
+        projectTitle: proj.title,
+        projectStatus: proj.status,
+        clientName: client ? (client.company_name ?? client.name) : null,
+        taskHoursLogged: hoursMap.get(task.id) ?? 0,
       }
     })
 
@@ -111,25 +118,22 @@ export default async function MyWorkPage() {
         fullName: myProfile.full_name,
         defaultHourlyRate: myProfile.default_hourly_rate ?? 0,
       }}
-      tasks={tasks}
+      items={items}
       activeProjects={(activeProjects ?? []).map((p: any) => ({
         id: p.id,
         jobNumber: p.job_number,
         title: p.title,
         clientName: p.clients ? (p.clients.company_name ?? p.clients.name) : null,
       }))}
-      projectRates={(projectRates ?? []).map((r: any) => ({
-        projectId: r.project_id,
-        hourlyRate: r.hourly_rate,
-      }))}
-      allProjectTasks={(allProjectTasks ?? []).map((t: any) => ({
+      activeTasks={(allActiveTasks ?? []).map((t: any) => ({
         id: t.id,
         projectId: t.project_id,
         title: t.title,
-        status: t.status,
         feeType: t.fee_type,
-        dueDate: t.due_date,
-        description: t.description,
+      }))}
+      projectRates={(projectRates ?? []).map((r: any) => ({
+        projectId: r.project_id,
+        hourlyRate: r.hourly_rate,
       }))}
     />
   )

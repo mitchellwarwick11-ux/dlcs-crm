@@ -17,6 +17,7 @@ interface Props {
   defaultHourlyRate: number
   feeType: string
   projectRates: ProjectRate[]
+  defaultDescription?: string
   onLogged: (hours: number) => void
   onCancel: () => void
 }
@@ -28,6 +29,7 @@ export function InlineTimeLog({
   defaultHourlyRate,
   feeType,
   projectRates,
+  defaultDescription,
   onLogged,
   onCancel,
 }: Props) {
@@ -35,7 +37,7 @@ export function InlineTimeLog({
   const [saving, setSaving] = useState(false)
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [hours, setHours] = useState('')
-  const [description, setDescription] = useState('')
+  const [description, setDescription] = useState(defaultDescription ?? '')
 
   const ratesForProject = projectRates
     .filter(r => r.projectId === projectId)
@@ -102,7 +104,7 @@ export function InlineTimeLog({
         />
       </div>
       <div className="space-y-1 flex-1 min-w-[160px]">
-        <label className="text-xs font-medium text-slate-500">Description</label>
+        <label className="text-xs font-medium text-slate-500">Task Description</label>
         <Input
           value={description}
           onChange={e => setDescription(e.target.value)}
