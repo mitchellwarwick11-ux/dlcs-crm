@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   startOfWeek, addDays, addWeeks, subWeeks,
@@ -8,6 +8,7 @@ import {
 } from 'date-fns'
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, Plus, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { StaffAvatar, StaffAvatarStack } from '@/components/ui/staff-avatar'
 import { createClient } from '@/lib/supabase/client'
 import { ScheduleEntryModal } from './schedule-entry-modal'
 import type { ScheduleEntryFull, FieldScheduleStatus } from '@/types/database'
@@ -118,60 +119,106 @@ function SurveyorSummary({ entries }: { entries: ScheduleEntryFull[] }) {
   )
 }
 
-// ─── Inline surveyor select (single-select dropdown) ─────────────────────────
+// ─── Inline surveyor select (avatar stack + multi-select popover) ───────────
 function SurveyorSelect({
   entry,
   allStaff,
   onSave,
+  disabled,
 }: {
   entry: ScheduleEntryFull
   allStaff: StaffOption[]
   onSave: (entryId: string, ids: string[]) => Promise<void>
+  disabled?: boolean
 }) {
   const [saving, setSaving] = useState(false)
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
 
-  const fieldGroup  = allStaff.filter(s => s.role === 'field_surveyor')
-  const otherGroup  = allStaff.filter(s => s.role !== 'field_surveyor')
-  const primaryId   = entry.field_surveyors[0]?.id ?? ''
-  const extraCount  = Math.max(0, entry.field_surveyors.length - 1)
+  const fieldGroup = allStaff.filter(s => s.role === 'field_surveyor')
+  const otherGroup = allStaff.filter(s => s.role !== 'field_surveyor')
+  const selectedIds = new Set(entry.field_surveyors.map(s => s.id))
+  const names = entry.field_surveyors.map(s => s.full_name)
 
-  async function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const newId = e.target.value
-    const current = entry.field_surveyors.map(s => s.id)
-    if (current.length === 1 && current[0] === newId) return
-    if (current.length === 0 && newId === '') return
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  async function toggleStaff(staffId: string) {
+    const next = new Set(selectedIds)
+    if (next.has(staffId)) next.delete(staffId)
+    else next.add(staffId)
     setSaving(true)
-    await onSave(entry.id, newId ? [newId] : [])
+    await onSave(entry.id, Array.from(next))
     setSaving(false)
   }
 
   if (saving) return <span className="text-xs text-slate-400">Saving…</span>
 
   return (
-    <div className="flex items-center gap-1.5">
-      <select
-        value={primaryId}
-        onChange={handleChange}
-        className="text-xs text-slate-700 border border-slate-200 bg-white rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-slate-300 cursor-pointer max-w-[150px]"
+    <div ref={ref} className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen(o => !o)}
+        disabled={disabled}
+        className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-slate-100 transition-colors disabled:opacity-60 disabled:pointer-events-none"
+        title={names.length > 0 ? names.join(', ') : 'Unassigned — click to assign'}
       >
-        <option value="">— unassigned —</option>
-        {fieldGroup.length > 0 && (
-          <optgroup label="Field Surveyors">
-            {fieldGroup.map(s => (
-              <option key={s.id} value={s.id}>{s.full_name}</option>
-            ))}
-          </optgroup>
-        )}
-        {otherGroup.length > 0 && (
-          <optgroup label="Other Staff">
-            {otherGroup.map(s => (
-              <option key={s.id} value={s.id}>{s.full_name}</option>
-            ))}
-          </optgroup>
-        )}
-      </select>
-      {extraCount > 0 && (
-        <span className="text-[10px] text-slate-400 whitespace-nowrap">+{extraCount} more</span>
+        <StaffAvatarStack names={names} size="sm" limit={3} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 z-40 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+          {fieldGroup.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wider sticky top-0 z-10">
+                Field Surveyors
+              </div>
+              {fieldGroup.map(s => (
+                <label
+                  key={s.id}
+                  className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm select-none"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(s.id)}
+                    onChange={() => toggleStaff(s.id)}
+                    className="rounded border-slate-300 h-3.5 w-3.5"
+                  />
+                  <StaffAvatar name={s.full_name} size="xs" />
+                  <span className="text-slate-700">{s.full_name}</span>
+                </label>
+              ))}
+            </>
+          )}
+          {otherGroup.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wider sticky top-0 z-10 border-t border-slate-100">
+                Other Staff
+              </div>
+              {otherGroup.map(s => (
+                <label
+                  key={s.id}
+                  className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm select-none"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(s.id)}
+                    onChange={() => toggleStaff(s.id)}
+                    className="rounded border-slate-300 h-3.5 w-3.5"
+                  />
+                  <StaffAvatar name={s.full_name} size="xs" />
+                  <span className="text-slate-700">{s.full_name}</span>
+                </label>
+              ))}
+            </>
+          )}
+        </div>
       )}
     </div>
   )
@@ -521,14 +568,20 @@ export function FieldScheduleBoard({
                             <HoursCell entry={entry} onSave={updateHoursAndTime} disabled={!canEdit} />
                           </td>
                           <td className="px-4 py-2.5">
-                            <SurveyorSelect entry={entry} allStaff={allStaff} onSave={updateSurveyors} />
+                            <SurveyorSelect entry={entry} allStaff={allStaff} onSave={updateSurveyors} disabled={!canEdit} />
                           </td>
                           <td className="px-4 py-2.5 text-slate-600 text-xs max-w-[180px] truncate">{address}</td>
-                          <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
-                            {proj?.job_manager?.full_name ?? '—'}
+                          <td className="px-4 py-2.5">
+                            {proj?.job_manager?.full_name
+                              ? <StaffAvatar name={proj.job_manager.full_name} size="sm" />
+                              : <span className="text-slate-300 text-xs">—</span>
+                            }
                           </td>
-                          <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
-                            {entry.office_surveyor?.full_name ?? '—'}
+                          <td className="px-4 py-2.5">
+                            {entry.office_surveyor?.full_name
+                              ? <StaffAvatar name={entry.office_surveyor.full_name} size="sm" />
+                              : <span className="text-slate-300 text-xs">—</span>
+                            }
                           </td>
                           <td className="px-4 py-2.5">
                             <StatusBadge status={entry.status} />
