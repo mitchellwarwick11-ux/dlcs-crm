@@ -4,10 +4,6 @@
 CREATE INDEX IF NOT EXISTS idx_time_entries_task_id
   ON time_entries(task_id);
 
--- purchase_orders.project_id — used in project invoice pages
-CREATE INDEX IF NOT EXISTS idx_purchase_orders_project_id
-  ON purchase_orders(project_id);
-
 -- task_assignments — both FK columns
 CREATE INDEX IF NOT EXISTS idx_task_assignments_task_id
   ON task_assignments(task_id);

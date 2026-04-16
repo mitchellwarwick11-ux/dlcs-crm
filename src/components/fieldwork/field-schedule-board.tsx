@@ -1,0 +1,578 @@
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  startOfWeek, addDays, addWeeks, subWeeks,
+  eachDayOfInterval, isWeekend, format, parseISO, isToday,
+} from 'date-fns'
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, Plus, Info } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { createClient } from '@/lib/supabase/client'
+import { ScheduleEntryModal } from './schedule-entry-modal'
+import type { ScheduleEntryFull, FieldScheduleStatus } from '@/types/database'
+
+interface StaffOption { id: string; full_name: string; role?: string }
+interface EquipmentOption { id: string; label: string }
+interface TaskOption { id: string; project_id: string; title: string }
+interface ProjectOption {
+  id: string
+  job_number: string
+  title: string
+  site_address: string | null
+  suburb: string | null
+  clients: { name: string; company_name: string | null } | null
+  job_manager: { full_name: string } | null
+}
+
+interface Props {
+  initialEntries: ScheduleEntryFull[]
+  weekStart: string
+  canEdit: boolean
+  projects: ProjectOption[]
+  fieldSurveyors: StaffOption[]
+  officeSurveyors: StaffOption[]
+  allTasks: TaskOption[]
+  equipment: EquipmentOption[]
+  allStaff: StaffOption[]
+}
+
+const STATUS_CONFIG: Record<FieldScheduleStatus, { label: string; className: string }> = {
+  must_happen: { label: 'Must Happen', className: 'bg-red-100 text-red-800 border border-red-200'     },
+  asap:        { label: 'ASAP',        className: 'bg-orange-100 text-orange-800 border border-orange-200' },
+  scheduled:   { label: 'Scheduled',   className: 'bg-blue-100 text-blue-800 border border-blue-200'  },
+  completed:   { label: 'Completed',   className: 'bg-green-100 text-green-800 border border-green-200'},
+  cancelled:   { label: 'Cancelled',   className: 'bg-slate-100 text-slate-500 border border-slate-200'},
+}
+
+const STATUS_ORDER: Record<FieldScheduleStatus, number> = {
+  must_happen: 0,
+  asap:        1,
+  scheduled:   2,
+  completed:   3,
+  cancelled:   4,
+}
+
+type SortCol = 'job_number' | 'address' | 'task' | 'surveyors' | 'resources' | 'hours' | 'office_surveyor' | 'job_manager' | 'status' | 'client' | 'notes'
+type SortDir = 'asc' | 'desc'
+
+function StatusBadge({ status }: { status: FieldScheduleStatus }) {
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.scheduled
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${cfg.className}`}>
+      {cfg.label}
+    </span>
+  )
+}
+
+const DAILY_TARGET = 8
+
+function SurveyorSummary({ entries }: { entries: ScheduleEntryFull[] }) {
+  const map = new Map<string, { name: string; hours: number }>()
+  for (const entry of entries) {
+    const hrs = Number(entry.hours ?? 0)
+    for (const s of entry.field_surveyors) {
+      const cur = map.get(s.id) ?? { name: s.full_name, hours: 0 }
+      map.set(s.id, { name: cur.name, hours: cur.hours + hrs })
+    }
+  }
+  if (map.size === 0) return null
+
+  const surveyors = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
+  const totalAllocated = surveyors.reduce((sum, s) => sum + s.hours, 0)
+  const totalShort     = Math.max(0, surveyors.length * DAILY_TARGET - totalAllocated)
+
+  return (
+    <div className="px-5 py-3 border-t border-slate-100 bg-slate-50">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Surveyor Hours</span>
+        <span className="text-xs text-slate-500">
+          {totalAllocated}h allocated of {surveyors.length * DAILY_TARGET}h target
+          {totalShort > 0 && (
+            <span className="ml-1.5 font-medium text-amber-600">· {totalShort}h unallocated</span>
+          )}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {surveyors.map(s => {
+          const short = Math.max(0, DAILY_TARGET - s.hours)
+          const label = s.name.split(' ').map((p, i) => i === 0 ? p : p[0] + '.').join(' ')
+          return (
+            <span
+              key={s.name}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                short === 0
+                  ? 'bg-green-100 text-green-800'
+                  : short <= 4
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-red-100 text-red-800'
+              }`}
+            >
+              {label} · {s.hours}h
+              {short > 0 && <span className="opacity-70">({short}h short)</span>}
+            </span>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Info popover (shows details + other scheduled days) ─────────────────────
+function InfoPopover({
+  entry,
+  allEntries,
+  onEdit,
+  canEdit,
+}: {
+  entry: ScheduleEntryFull
+  allEntries: ScheduleEntryFull[]
+  onEdit: () => void
+  canEdit: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const otherDays = allEntries
+    .filter(e =>
+      e.id !== entry.id &&
+      e.project_id === entry.project_id &&
+      (entry.task_id ? e.task_id === entry.task_id : true)
+    )
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="p-0.5 text-slate-300 hover:text-blue-500 transition-colors"
+        title="View details"
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 z-50 mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-xl text-xs">
+
+          {/* Task + due date */}
+          {entry.project_tasks && (
+            <div className="px-3.5 py-3 border-b border-slate-100">
+              <p className="font-semibold text-slate-700">{entry.project_tasks.title}</p>
+              {entry.project_tasks.due_date && (
+                <p className="text-slate-400 mt-0.5">
+                  Due: {format(parseISO(entry.project_tasks.due_date), 'd MMM yyyy')}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Notes */}
+          {entry.notes && (
+            <div className="px-3.5 py-3 border-b border-slate-100">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Notes</p>
+              <p className="text-slate-600 whitespace-pre-wrap">{entry.notes}</p>
+            </div>
+          )}
+
+          {/* Other scheduled days */}
+          <div className="px-3.5 py-3 border-b border-slate-100">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Also Scheduled</p>
+            {otherDays.length === 0 ? (
+              <p className="text-slate-400 italic">No other days in this window.</p>
+            ) : (
+              <div className="space-y-1">
+                {otherDays.map(e => (
+                  <div key={e.id} className="flex items-center justify-between">
+                    <span className="text-slate-700 font-medium">{format(parseISO(e.date), 'EEE d MMM')}</span>
+                    <span className="text-slate-400">
+                      {e.hours ?? 0}h{e.time_of_day ? ` ${e.time_of_day.toUpperCase()}` : ''}
+                      {e.field_surveyors.length > 0 && ` · ${e.field_surveyors.map(s => s.full_name.split(' ')[0]).join(', ')}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer link */}
+          <div className="px-3.5 py-2.5">
+            <button
+              onClick={() => { setOpen(false); onEdit() }}
+              className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
+            >
+              {canEdit ? 'Edit entry →' : 'View details →'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Inline surveyor select (single-select dropdown) ─────────────────────────
+function SurveyorSelect({
+  entry,
+  allStaff,
+  onSave,
+}: {
+  entry: ScheduleEntryFull
+  allStaff: StaffOption[]
+  onSave: (entryId: string, ids: string[]) => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+
+  const fieldGroup  = allStaff.filter(s => s.role === 'field_surveyor')
+  const otherGroup  = allStaff.filter(s => s.role !== 'field_surveyor')
+  const primaryId   = entry.field_surveyors[0]?.id ?? ''
+  const extraCount  = Math.max(0, entry.field_surveyors.length - 1)
+
+  async function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const newId = e.target.value
+    const current = entry.field_surveyors.map(s => s.id)
+    if (current.length === 1 && current[0] === newId) return
+    if (current.length === 0 && newId === '') return
+    setSaving(true)
+    await onSave(entry.id, newId ? [newId] : [])
+    setSaving(false)
+  }
+
+  if (saving) return <span className="text-xs text-slate-400">Saving…</span>
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <select
+        value={primaryId}
+        onChange={handleChange}
+        className="text-xs text-slate-700 border border-slate-200 bg-white rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-slate-300 cursor-pointer max-w-[150px]"
+      >
+        <option value="">— unassigned —</option>
+        {fieldGroup.length > 0 && (
+          <optgroup label="Field Surveyors">
+            {fieldGroup.map(s => (
+              <option key={s.id} value={s.id}>{s.full_name}</option>
+            ))}
+          </optgroup>
+        )}
+        {otherGroup.length > 0 && (
+          <optgroup label="Other Staff">
+            {otherGroup.map(s => (
+              <option key={s.id} value={s.id}>{s.full_name}</option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+      {extraCount > 0 && (
+        <span className="text-[10px] text-slate-400 whitespace-nowrap">+{extraCount} more</span>
+      )}
+    </div>
+  )
+}
+
+function SortIcon({ col, sortCol, sortDir }: { col: SortCol; sortCol: SortCol | null; sortDir: SortDir }) {
+  if (sortCol !== col) return <ChevronsUpDown className="h-3 w-3 ml-1 text-slate-300" />
+  return sortDir === 'asc'
+    ? <ChevronUp className="h-3 w-3 ml-1 text-slate-600" />
+    : <ChevronDown className="h-3 w-3 ml-1 text-slate-600" />
+}
+
+function getSortValue(entry: ScheduleEntryFull, col: SortCol): string | number {
+  const proj = entry.projects
+  switch (col) {
+    case 'job_number':      return proj?.job_number ?? ''
+    case 'address':         return proj ? [proj.site_address, proj.suburb].filter(Boolean).join(', ') : ''
+    case 'task':            return entry.project_tasks?.title ?? ''
+    case 'surveyors':       return entry.field_surveyors.map(s => s.full_name).join(', ')
+    case 'resources':       return entry.resources.map(r => r.label).join(', ')
+    case 'hours':           return entry.hours ?? -1
+    case 'office_surveyor': return entry.office_surveyor?.full_name ?? ''
+    case 'job_manager':     return proj?.job_manager?.full_name ?? ''
+    case 'status':          return STATUS_ORDER[entry.status] ?? 99
+    case 'client':          return proj?.clients ? (proj.clients.company_name ?? proj.clients.name) : ''
+    case 'notes':           return entry.notes ?? ''
+  }
+}
+
+function sortEntries(entries: ScheduleEntryFull[], col: SortCol, dir: SortDir): ScheduleEntryFull[] {
+  return [...entries].sort((a, b) => {
+    const av = getSortValue(a, col)
+    const bv = getSortValue(b, col)
+    let cmp = 0
+    if (typeof av === 'number' && typeof bv === 'number') {
+      cmp = av - bv
+    } else {
+      cmp = String(av).localeCompare(String(bv), undefined, { sensitivity: 'base', numeric: true })
+    }
+    return dir === 'asc' ? cmp : -cmp
+  })
+}
+
+export function FieldScheduleBoard({
+  initialEntries,
+  weekStart: weekStartStr,
+  canEdit,
+  projects,
+  fieldSurveyors,
+  officeSurveyors,
+  allTasks,
+  equipment,
+  allStaff,
+}: Props) {
+  const router   = useRouter()
+  const supabase = createClient()
+
+  async function updateSurveyors(entryId: string, surveyorIds: string[]) {
+    const db = supabase as any
+    await db.from('field_schedule_surveyors').delete().eq('entry_id', entryId)
+    if (surveyorIds.length > 0) {
+      await db.from('field_schedule_surveyors').insert(
+        surveyorIds.map(id => ({ entry_id: entryId, staff_id: id }))
+      )
+    }
+    router.refresh()
+  }
+
+  const [modalOpen, setModalOpen]       = useState(false)
+  const [editingEntry, setEditingEntry] = useState<ScheduleEntryFull | null>(null)
+  const [prefillDate, setPrefillDate]   = useState('')
+  const [sortCol, setSortCol]           = useState<SortCol | null>(null)
+  const [sortDir, setSortDir]           = useState<SortDir>('asc')
+
+  const weekStart = parseISO(weekStartStr)
+  const weekEnd   = addDays(weekStart, 11) // 2 weeks Mon–Fri: Mon+11 = Fri of week 2
+
+  // All 10 working days in the two-week window
+  const days = eachDayOfInterval({ start: weekStart, end: weekEnd })
+    .filter(d => !isWeekend(d))
+
+  // Group entries by date string
+  const entriesByDate: Record<string, ScheduleEntryFull[]> = {}
+  for (const entry of initialEntries) {
+    if (!entriesByDate[entry.date]) entriesByDate[entry.date] = []
+    entriesByDate[entry.date].push(entry)
+  }
+
+  function handleSort(col: SortCol) {
+    if (sortCol === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortCol(col)
+      setSortDir('asc')
+    }
+  }
+
+  function navigateWeek(direction: 'prev' | 'next' | 'today') {
+    let target: Date
+    if (direction === 'today') {
+      target = startOfWeek(new Date(), { weekStartsOn: 1 })
+    } else if (direction === 'next') {
+      target = addWeeks(weekStart, 1)
+    } else {
+      target = subWeeks(weekStart, 1)
+    }
+    router.push(`/fieldwork?week=${format(target, 'yyyy-MM-dd')}`)
+  }
+
+  function openAdd(dateStr: string) {
+    setPrefillDate(dateStr)
+    setEditingEntry(null)
+    setModalOpen(true)
+  }
+
+  function openEdit(entry: ScheduleEntryFull) {
+    setEditingEntry(entry)
+    setPrefillDate(entry.date)
+    setModalOpen(true)
+  }
+
+  const week1Label = `${format(days[0], 'd MMM')} – ${format(days[4], 'd MMM yyyy')}`
+  const week2Label = `${format(days[5], 'd MMM')} – ${format(days[9], 'd MMM yyyy')}`
+
+  function ThSort({ col, children, className = '' }: { col: SortCol; children: React.ReactNode; className?: string }) {
+    return (
+      <th
+        className={`text-left px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide cursor-pointer select-none hover:text-slate-700 hover:bg-slate-100 transition-colors ${className}`}
+        onClick={() => handleSort(col)}
+      >
+        <span className="inline-flex items-center">
+          {children}
+          <SortIcon col={col} sortCol={sortCol} sortDir={sortDir} />
+        </span>
+      </th>
+    )
+  }
+
+  return (
+    <div className="p-8 space-y-6">
+
+      {/* Page header + navigation */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Field Schedule</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{week1Label} &nbsp;·&nbsp; {week2Label}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigateWeek('prev')}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigateWeek('today')}>
+            Today
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigateWeek('next')}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Day sections */}
+      {days.map(day => {
+        const dateStr = format(day, 'yyyy-MM-dd')
+        const rawEntries = entriesByDate[dateStr] ?? []
+        const dayEntries = sortCol ? sortEntries(rawEntries, sortCol, sortDir) : rawEntries
+        const today = isToday(day)
+
+        return (
+          <div key={dateStr} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+
+            {/* Day header */}
+            <div className={`flex items-center justify-between px-5 py-3 border-b border-slate-100 ${today ? 'bg-blue-50' : 'bg-slate-50'}`}>
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-semibold ${today ? 'text-blue-700' : 'text-slate-700'}`}>
+                  {format(day, 'EEEE d MMMM yyyy')}
+                </span>
+                {today && (
+                  <span className="text-xs font-medium bg-blue-600 text-white px-1.5 py-0.5 rounded">Today</span>
+                )}
+              </div>
+              {canEdit && (
+                <button
+                  onClick={() => openAdd(dateStr)}
+                  className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-200 px-2 py-1 rounded transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Entry
+                </button>
+              )}
+            </div>
+
+            {/* Entries table */}
+            {dayEntries.length === 0 ? (
+              <div className="px-5 py-4 text-sm text-slate-400 italic">No entries scheduled.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <ThSort col="job_number" className="whitespace-nowrap">Job #</ThSort>
+                      <th className="px-1 py-2 w-6" />
+                      <ThSort col="task">Task</ThSort>
+                      <ThSort col="resources">Resources</ThSort>
+                      <ThSort col="hours" className="whitespace-nowrap">Hours</ThSort>
+                      <ThSort col="surveyors">Field Surveyor(s)</ThSort>
+                      <ThSort col="address">Address</ThSort>
+                      <ThSort col="job_manager" className="whitespace-nowrap">Job Manager</ThSort>
+                      <ThSort col="office_surveyor" className="whitespace-nowrap">Office Surveyor</ThSort>
+                      <ThSort col="status">Status</ThSort>
+                      <ThSort col="client">Client</ThSort>
+                      <ThSort col="notes">Notes</ThSort>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {dayEntries.map(entry => {
+                      const proj = entry.projects
+                      const address = proj
+                        ? [proj.site_address, proj.suburb].filter(Boolean).join(', ') || '—'
+                        : '—'
+                      const client = proj?.clients
+                        ? (proj.clients.company_name ?? proj.clients.name)
+                        : '—'
+                      const resourceNames = entry.resources.map(r => r.label).join(', ') || '—'
+
+                      return (
+                        <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-2.5 font-mono font-medium text-slate-900 whitespace-nowrap">
+                            {proj?.job_number ?? '—'}
+                          </td>
+                          <td className="px-1 py-2.5">
+                            <InfoPopover
+                              entry={entry}
+                              allEntries={initialEntries}
+                              onEdit={() => openEdit(entry)}
+                              canEdit={canEdit}
+                            />
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-700 text-xs whitespace-nowrap">
+                            {entry.project_tasks?.title ?? '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs">{resourceNames}</td>
+                          <td className="px-4 py-2.5 text-slate-700 tabular-nums whitespace-nowrap">
+                            {entry.hours != null ? (
+                              <>
+                                {entry.hours}h
+                                {entry.time_of_day && (
+                                  <sup className="ml-0.5 text-[9px] font-semibold text-slate-400 uppercase">
+                                    {entry.time_of_day}
+                                  </sup>
+                                )}
+                              </>
+                            ) : '—'}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <SurveyorSelect entry={entry} allStaff={allStaff} onSave={updateSurveyors} />
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs max-w-[180px] truncate">{address}</td>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
+                            {proj?.job_manager?.full_name ?? '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
+                            {entry.office_surveyor?.full_name ?? '—'}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <StatusBadge status={entry.status} />
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs truncate max-w-[140px]">{client}</td>
+                          <td
+                            className="px-4 py-2.5 text-slate-500 text-xs max-w-[180px] truncate"
+                            title={entry.notes ?? undefined}
+                          >
+                            {entry.notes ?? '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <SurveyorSummary entries={dayEntries} />
+          </div>
+        )
+      })}
+
+      {/* Detail / edit modal */}
+      <ScheduleEntryModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        entry={editingEntry}
+        prefillDate={prefillDate}
+        projects={projects}
+        allTasks={allTasks}
+        fieldSurveyors={fieldSurveyors}
+        officeSurveyors={officeSurveyors}
+        equipment={equipment}
+        allStaff={allStaff}
+        allEntries={initialEntries}
+        canEdit={canEdit}
+      />
+    </div>
+  )
+}
