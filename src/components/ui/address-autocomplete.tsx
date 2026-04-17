@@ -79,6 +79,13 @@ export function AddressAutocomplete({ value, onChange, onSelect, id, placeholder
   }
 
   async function handleSelect(s: AddressSuggestion) {
+    // Cancel any pending debounced search + in-flight request from earlier typing
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
+    abortRef.current?.abort()
+
     onChange(s.streetAddress)
     setSuggestions([])
     setOpen(false)
