@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { AddressAutocomplete } from '@/components/ui/address-autocomplete'
 import { Loader2 } from 'lucide-react'
 
 interface ProjectEditFormProps {
@@ -29,7 +30,7 @@ export function ProjectEditForm({ project, primaryContact, clients, staff }: Pro
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<ProjectFormValues>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ProjectFormValues>({
     resolver: zodResolver(projectSchema),
     defaultValues: {
       job_number: project.job_number,
@@ -226,7 +227,22 @@ export function ProjectEditForm({ project, primaryContact, clients, staff }: Pro
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-3 space-y-1">
             <Label htmlFor="site_address">Site Address</Label>
-            <Input id="site_address" {...register('site_address')} placeholder="Street address" />
+            <AddressAutocomplete
+              id="site_address"
+              value={watch('site_address') ?? ''}
+              onChange={val => setValue('site_address', val)}
+              onSelect={result => {
+                setValue('site_address', result.streetAddress)
+                if (result.suburb)    setValue('suburb', result.suburb)
+                if (result.lot)       setValue('lot_number', result.lot)
+                if (result.section)   setValue('section_number', result.section)
+                if (result.planLabel) setValue('plan_number', result.planLabel)
+                if (result.lga)       setValue('lga', result.lga)
+                if (result.parish)    setValue('parish', result.parish)
+                if (result.county)    setValue('county', result.county)
+              }}
+              placeholder="Start typing an address…"
+            />
           </div>
           <div className="md:col-span-3 space-y-1">
             <Label htmlFor="suburb">Suburb</Label>

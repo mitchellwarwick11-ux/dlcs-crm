@@ -9,6 +9,14 @@ export interface AddressSuggestion {
   suburb:        string
   state?:        string
   postcode?:     string
+  propid?:       number | null
+  // Enriched on selection via /api/property-details:
+  lot?:          string | null
+  section?:      string | null
+  planLabel?:    string | null
+  lga?:          string | null
+  parish?:       string | null
+  county?:       string | null
 }
 
 interface Props {
@@ -70,12 +78,45 @@ export function AddressAutocomplete({ value, onChange, onSelect, id, placeholder
     }, 200)
   }
 
-  function handleSelect(s: AddressSuggestion) {
+  async function handleSelect(s: AddressSuggestion) {
     onChange(s.streetAddress)
-    onSelect(s)
     setSuggestions([])
     setOpen(false)
     setActiveIndex(-1)
+
+    // Enrich with lot/section/plan/lga/parish/county via propid lookup
+    let enriched: AddressSuggestion = s
+    if (s.propid) {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/property-details?propid=${s.propid}`)
+        if (res.ok) {
+          const d = await res.json()
+          enriched = {
+            ...s,
+            streetAddress: d.streetAddress ?? s.streetAddress,
+            suburb: d.suburb ?? s.suburb,
+            postcode: d.postcode ?? s.postcode,
+            lot: d.lot ?? null,
+            section: d.section ?? null,
+            planLabel: d.planLabel ?? null,
+            lga: d.lga ?? null,
+            parish: d.parish ?? null,
+            county: d.county ?? null,
+          }
+          // Update the visible input if the canonical street address differs
+          if (d.streetAddress && d.streetAddress !== s.streetAddress) {
+            onChange(d.streetAddress)
+          }
+        }
+      } catch {
+        // silently fall back to unenriched
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    onSelect(enriched)
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {

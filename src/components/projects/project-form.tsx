@@ -335,7 +335,13 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
               onChange={val => setValue('site_address', val)}
               onSelect={result => {
                 setValue('site_address', result.streetAddress)
-                if (result.suburb) setValue('suburb', result.suburb)
+                if (result.suburb)    setValue('suburb', result.suburb)
+                if (result.lot)       setValue('lot_number', result.lot)
+                if (result.section)   setValue('section_number', result.section)
+                if (result.planLabel) setValue('plan_number', result.planLabel)
+                if (result.lga)       setValue('lga', result.lga)
+                if (result.parish)    setValue('parish', result.parish)
+                if (result.county)    setValue('county', result.county)
               }}
               placeholder="e.g. 123 Smith Street"
             />

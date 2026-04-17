@@ -46,7 +46,7 @@ export async function GET(request: Request) {
 
   const url = new URL(BASE)
   url.searchParams.set('where',            where)
-  url.searchParams.set('outFields',        'housenumber,roadname,roadtype,suburbname,postcode')
+  url.searchParams.set('outFields',        'housenumber,roadname,roadtype,suburbname,postcode,propid')
   url.searchParams.set('resultRecordCount','8')
   url.searchParams.set('returnGeometry',   'false')
   url.searchParams.set('f',               'json')
@@ -75,11 +75,12 @@ export async function GET(request: Request) {
           suburb,
           state: 'NSW',
           postcode,
+          propid: a.propid ?? null,
         }
       })
       .filter((s: any) => s.streetAddress.length > 0)
 
-    // Deduplicate by streetAddress + suburb
+    // Deduplicate by streetAddress + suburb (keep the first occurrence's propid)
     const seen   = new Set<string>()
     const unique = suggestions.filter((s: any) => {
       const key = `${s.streetAddress}|${s.suburb}`
