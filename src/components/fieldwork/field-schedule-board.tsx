@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import {
   startOfWeek, addDays, addWeeks, subWeeks,
@@ -133,17 +134,35 @@ function SurveyorSelect({
 }) {
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
 
   const fieldGroup = allStaff.filter(s => s.role === 'field_surveyor')
   const otherGroup = allStaff.filter(s => s.role !== 'field_surveyor')
   const selectedIds = new Set(entry.field_surveyors.map(s => s.id))
   const names = entry.field_surveyors.map(s => s.full_name)
 
+  // Position popover below trigger, keep inside viewport
+  useEffect(() => {
+    if (!open || !triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const width = 224 // w-56
+    const maxLeft = window.innerWidth - width - 8
+    setPos({
+      top: rect.bottom + 4,
+      left: Math.min(rect.left, Math.max(8, maxLeft)),
+    })
+  }, [open])
+
+  // Close on outside click
   useEffect(() => {
     if (!open) return
     function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (triggerRef.current?.contains(target)) return
+      if (popoverRef.current?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
@@ -161,8 +180,9 @@ function SurveyorSelect({
   if (saving) return <span className="text-xs text-slate-400">Saving…</span>
 
   return (
-    <div ref={ref} className="relative inline-flex">
+    <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => !disabled && setOpen(o => !o)}
         disabled={disabled}
@@ -172,8 +192,12 @@ function SurveyorSelect({
         <StaffAvatarStack names={names} size="sm" limit={3} />
       </button>
 
-      {open && (
-        <div className="absolute top-full left-0 z-40 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+      {open && pos && typeof window !== 'undefined' && createPortal(
+        <div
+          ref={popoverRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: 224 }}
+          className="z-50 bg-white border border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto"
+        >
           {fieldGroup.length > 0 && (
             <>
               <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wider sticky top-0 z-10">
@@ -218,9 +242,10 @@ function SurveyorSelect({
               ))}
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   )
 }
 
