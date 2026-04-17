@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, X, CalendarDays } from 'lucide-react'
+import { Loader2, X, CalendarDays, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,7 +46,7 @@ const STATUS_OPTIONS: { value: FieldScheduleStatus; label: string }[] = [
   { value: 'cancelled',   label: 'Cancelled'   },
 ]
 
-// Grouped surveyor checkboxes: field surveyors at top, others below
+// Grouped surveyor select: collapsed dropdown, expands on click
 function GroupedSurveyorSelect({
   allStaff,
   selected,
@@ -58,40 +58,74 @@ function GroupedSurveyorSelect({
   onChange: (ids: string[]) => void
   disabled?: boolean
 }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
   const fieldGroup = allStaff.filter(s => s.role === 'field_surveyor')
   const otherGroup = allStaff.filter(s => s.role !== 'field_surveyor')
+  const selectedNames = allStaff
+    .filter(s => selected.includes(s.id))
+    .map(s => s.full_name)
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
 
   function toggle(id: string) {
     onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id])
   }
 
   return (
-    <div className={`border border-slate-200 rounded-md max-h-36 overflow-y-auto ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
-      {fieldGroup.length > 0 && (
-        <>
-          <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wider sticky top-0 z-10">
-            Field Surveyors
-          </div>
-          {fieldGroup.map(s => (
-            <label key={s.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm select-none border-t border-slate-50">
-              <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggle(s.id)} className="rounded border-slate-300 h-3.5 w-3.5" />
-              <span className="text-slate-700">{s.full_name}</span>
-            </label>
-          ))}
-        </>
-      )}
-      {otherGroup.length > 0 && (
-        <>
-          <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wider sticky top-0 z-10 border-t border-slate-200">
-            Other Staff
-          </div>
-          {otherGroup.map(s => (
-            <label key={s.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm select-none border-t border-slate-50">
-              <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggle(s.id)} className="rounded border-slate-300 h-3.5 w-3.5" />
-              <span className="text-slate-700">{s.full_name}</span>
-            </label>
-          ))}
-        </>
+    <div ref={ref} className={`relative ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-left focus:outline-none focus:ring-2 focus:ring-slate-400"
+      >
+        <span className={selectedNames.length > 0 ? 'text-slate-700 truncate' : 'text-slate-400'}>
+          {selectedNames.length === 0
+            ? '— Select surveyors —'
+            : selectedNames.length === 1
+            ? selectedNames[0]
+            : `${selectedNames.length} selected`}
+        </span>
+        <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+          {fieldGroup.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wider sticky top-0 z-10">
+                Field Surveyors
+              </div>
+              {fieldGroup.map(s => (
+                <label key={s.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm select-none border-t border-slate-50">
+                  <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggle(s.id)} className="rounded border-slate-300 h-3.5 w-3.5" />
+                  <span className="text-slate-700">{s.full_name}</span>
+                </label>
+              ))}
+            </>
+          )}
+          {otherGroup.length > 0 && (
+            <>
+              <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wider sticky top-0 z-10 border-t border-slate-200">
+                Other Staff
+              </div>
+              {otherGroup.map(s => (
+                <label key={s.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm select-none border-t border-slate-50">
+                  <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggle(s.id)} className="rounded border-slate-300 h-3.5 w-3.5" />
+                  <span className="text-slate-700">{s.full_name}</span>
+                </label>
+              ))}
+            </>
+          )}
+        </div>
       )}
     </div>
   )
