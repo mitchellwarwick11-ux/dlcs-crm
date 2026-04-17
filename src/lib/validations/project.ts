@@ -17,7 +17,11 @@ export const projectSchema = z.object({
   site_address: z.string().nullable().optional(),
   suburb: z.string().nullable().optional(),
   lot_number: z.string().nullable().optional(),
+  section_number: z.string().nullable().optional(),
   plan_number: z.string().nullable().optional(),
+  lga: z.string().nullable().optional(),
+  parish: z.string().nullable().optional(),
+  county: z.string().nullable().optional(),
   // Tasks
   task_ids: z.array(z.string()),
   custom_tasks: z.array(z.string()),

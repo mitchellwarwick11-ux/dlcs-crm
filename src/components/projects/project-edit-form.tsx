@@ -45,7 +45,11 @@ export function ProjectEditForm({ project, primaryContact, clients, staff }: Pro
       site_address: project.site_address ?? '',
       suburb: project.suburb ?? '',
       lot_number: project.lot_number ?? '',
+      section_number: project.section_number ?? '',
       plan_number: project.plan_number ?? '',
+      lga: project.lga ?? '',
+      parish: project.parish ?? '',
+      county: project.county ?? '',
       task_ids: [],
       custom_tasks: [],
     },
@@ -79,7 +83,11 @@ export function ProjectEditForm({ project, primaryContact, clients, staff }: Pro
         site_address: values.site_address || null,
         suburb: values.suburb || null,
         lot_number: values.lot_number || null,
+        section_number: values.section_number || null,
         plan_number: values.plan_number || null,
+        lga: values.lga || null,
+        parish: values.parish || null,
+        county: values.county || null,
         is_billable: values.is_billable,
       })
       .eq('id', project.id)
@@ -215,22 +223,42 @@ export function ProjectEditForm({ project, primaryContact, clients, staff }: Pro
       {/* Site Details */}
       <Card>
         <CardHeader><CardTitle>Site Details</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2 space-y-1">
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-3 space-y-1">
             <Label htmlFor="site_address">Site Address</Label>
             <Input id="site_address" {...register('site_address')} placeholder="Street address" />
           </div>
-          <div className="space-y-1">
+          <div className="md:col-span-3 space-y-1">
             <Label htmlFor="suburb">Suburb</Label>
             <Input id="suburb" {...register('suburb')} />
           </div>
+
+          {/* Lot / Section / Plan */}
           <div className="space-y-1">
             <Label htmlFor="lot_number">Lot Number</Label>
             <Input id="lot_number" {...register('lot_number')} placeholder="e.g. 5" />
           </div>
           <div className="space-y-1">
+            <Label htmlFor="section_number">Section Number</Label>
+            <Input id="section_number" {...register('section_number')} placeholder="e.g. 12" />
+          </div>
+          <div className="space-y-1">
             <Label htmlFor="plan_number">Plan Number</Label>
             <Input id="plan_number" {...register('plan_number')} placeholder="e.g. DP123456" />
+          </div>
+
+          {/* LGA / Parish / County */}
+          <div className="space-y-1">
+            <Label htmlFor="lga">LGA</Label>
+            <Input id="lga" {...register('lga')} placeholder="e.g. Lake Macquarie" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="parish">Parish</Label>
+            <Input id="parish" {...register('parish')} placeholder="e.g. Kahibah" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="county">County</Label>
+            <Input id="county" {...register('county')} placeholder="e.g. Northumberland" />
           </div>
         </CardContent>
       </Card>

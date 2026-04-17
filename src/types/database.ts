@@ -112,7 +112,11 @@ export type Database = {
           site_address: string | null
           suburb: string | null
           lot_number: string | null
+          section_number: string | null
           plan_number: string | null
+          lga: string | null
+          parish: string | null
+          county: string | null
           local_authority: string | null
           purchase_order_number: string | null
           is_billable: boolean

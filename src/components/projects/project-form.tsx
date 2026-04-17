@@ -64,8 +64,12 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
       contact_email: quotePrefill?.contactEmail ?? '',
       site_address: quotePrefill?.siteAddress  ?? '',
       suburb:       quotePrefill?.suburb       ?? '',
-      lot_number:   quotePrefill?.lotNumber    ?? '',
-      plan_number:  quotePrefill?.planNumber   ?? '',
+      lot_number:     quotePrefill?.lotNumber    ?? '',
+      section_number: '',
+      plan_number:    quotePrefill?.planNumber   ?? '',
+      lga:            '',
+      parish:         '',
+      county:         '',
     },
   })
 
@@ -152,7 +156,11 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
         site_address: values.site_address || null,
         suburb: values.suburb || null,
         lot_number: values.lot_number || null,
+        section_number: values.section_number || null,
         plan_number: values.plan_number || null,
+        lga: values.lga || null,
+        parish: values.parish || null,
+        county: values.county || null,
         purchase_order_number: values.purchase_order_number || null,
         is_billable: values.is_billable,
         created_by: userId,
@@ -338,15 +346,35 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
             <Input id="suburb" {...register('suburb')} placeholder="Auto-filled from address, or type manually" />
           </div>
 
-          {/* Lot / Plan — optional reference fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+          {/* Lot / Section / Plan — optional reference fields */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
             <div className="space-y-1">
               <Label htmlFor="lot_number" className="text-slate-500">Lot Number <span className="font-normal">(optional)</span></Label>
               <Input id="lot_number" {...register('lot_number')} placeholder="e.g. 5" />
             </div>
             <div className="space-y-1">
+              <Label htmlFor="section_number" className="text-slate-500">Section Number <span className="font-normal">(optional)</span></Label>
+              <Input id="section_number" {...register('section_number')} placeholder="e.g. 12" />
+            </div>
+            <div className="space-y-1">
               <Label htmlFor="plan_number" className="text-slate-500">Plan Number <span className="font-normal">(optional)</span></Label>
               <Input id="plan_number" {...register('plan_number')} placeholder="e.g. DP123456" />
+            </div>
+          </div>
+
+          {/* LGA / Parish / County — cadastral */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="lga" className="text-slate-500">LGA <span className="font-normal">(optional)</span></Label>
+              <Input id="lga" {...register('lga')} placeholder="e.g. Lake Macquarie" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="parish" className="text-slate-500">Parish <span className="font-normal">(optional)</span></Label>
+              <Input id="parish" {...register('parish')} placeholder="e.g. Kahibah" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="county" className="text-slate-500">County <span className="font-normal">(optional)</span></Label>
+              <Input id="county" {...register('county')} placeholder="e.g. Northumberland" />
             </div>
           </div>
 

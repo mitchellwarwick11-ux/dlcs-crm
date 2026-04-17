@@ -75,7 +75,11 @@ export default async function ProjectDetailsPage({
           <InfoRow label="Job Manager" value={manager ? `${manager.full_name} (${USER_ROLES[manager.role as UserRole]})` : null} />
           <InfoRow label="Site Address" value={[project.site_address, project.suburb].filter(Boolean).join(', ')} />
           <InfoRow label="Lot Number" value={project.lot_number} />
+          <InfoRow label="Section Number" value={project.section_number} />
           <InfoRow label="Plan Number" value={project.plan_number} />
+          <InfoRow label="LGA" value={project.lga} />
+          <InfoRow label="Parish" value={project.parish} />
+          <InfoRow label="County" value={project.county} />
           {project.description && (
             <div className="col-span-2 md:col-span-3">
               <p className="text-slate-500 text-xs uppercase tracking-wide mb-0.5">Notes</p>
