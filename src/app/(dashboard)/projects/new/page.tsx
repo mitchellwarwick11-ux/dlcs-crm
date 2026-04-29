@@ -30,8 +30,14 @@ export default async function NewProjectPage({
     contactEmail: string | null
     siteAddress: string | null
     suburb: string | null
+    state: string | null
+    postcode: string | null
     lotNumber: string | null
+    sectionNumber: string | null
     planNumber: string | null
+    lga: string | null
+    parish: string | null
+    county: string | null
     jobType: string | null
     lineItems: { description: string; amount: number }[]
   } | null = null
@@ -41,7 +47,10 @@ export default async function NewProjectPage({
       .from('quotes')
       .select(`
         id, client_id, contact_name, contact_phone, contact_email,
-        site_address, suburb, lot_number, plan_number, job_type, subtotal
+        site_address, suburb, state, postcode,
+        lot_number, section_number, plan_number,
+        lga, parish, county,
+        job_type, subtotal, selected_quote_tasks
       `)
       .eq('id', params.from_quote)
       .single()
@@ -53,26 +62,43 @@ export default async function NewProjectPage({
       .order('sort_order')
 
     if (quote) {
+      // Fee-proposal quotes store tasks in `selected_quote_tasks` (authoritative).
+      // Legacy global-quote-form quotes use `quote_items` rows. Fall back to
+      // job_type + subtotal if both are empty.
+      const quoteTasks = Array.isArray(quote.selected_quote_tasks) ? quote.selected_quote_tasks : []
       const fetchedItems = (quoteItems ?? []) as { description: string; amount: number }[]
 
-      // Fallback: if no line items were stored, synthesise one from the quote's job_type + subtotal
-      const lineItems = fetchedItems.length > 0
-        ? fetchedItems
-        : quote.job_type
-          ? [{ description: quote.job_type, amount: quote.subtotal ?? 0 }]
-          : []
+      let lineItems: { description: string; amount: number }[]
+      if (quoteTasks.length > 0) {
+        lineItems = quoteTasks.map((t: any) => ({
+          description: String(t.title ?? '').trim() || 'Quote Task',
+          amount:      Number(t.price) || 0,
+        }))
+      } else if (fetchedItems.length > 0) {
+        lineItems = fetchedItems
+      } else if (quote.job_type) {
+        lineItems = [{ description: quote.job_type, amount: quote.subtotal ?? 0 }]
+      } else {
+        lineItems = []
+      }
 
       quotePrefill = {
-        quoteId:      quote.id,
-        clientId:     quote.client_id,
-        contactName:  quote.contact_name,
-        contactPhone: quote.contact_phone,
-        contactEmail: quote.contact_email,
-        siteAddress:  quote.site_address,
-        suburb:       quote.suburb,
-        lotNumber:    quote.lot_number,
-        planNumber:   quote.plan_number,
-        jobType:      quote.job_type,
+        quoteId:       quote.id,
+        clientId:      quote.client_id,
+        contactName:   quote.contact_name,
+        contactPhone:  quote.contact_phone,
+        contactEmail:  quote.contact_email,
+        siteAddress:   quote.site_address,
+        suburb:        quote.suburb,
+        state:         quote.state,
+        postcode:      quote.postcode,
+        lotNumber:     quote.lot_number,
+        sectionNumber: quote.section_number,
+        planNumber:    quote.plan_number,
+        lga:           quote.lga,
+        parish:        quote.parish,
+        county:        quote.county,
+        jobType:       quote.job_type,
         lineItems,
       }
     }

@@ -22,8 +22,8 @@ export default async function FieldLayout({
 
   return (
     // Full-height white card centred on larger screens, full-width on mobile
-    <div className="min-h-screen bg-slate-100">
-      <div className="max-w-lg mx-auto min-h-screen bg-white flex flex-col shadow-sm">
+    <div className="min-h-screen bg-[#2F2F33]">
+      <div className="max-w-lg mx-auto min-h-screen bg-[#F5F4F1] flex flex-col shadow-sm">
         {children}
       </div>
     </div>

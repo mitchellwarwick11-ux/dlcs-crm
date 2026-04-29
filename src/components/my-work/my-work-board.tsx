@@ -5,12 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { format, parseISO, isPast, isThisWeek } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
-import {
-  TASK_STATUSES,
-  TASK_STATUS_COLOURS,
-  TASK_STATUS_CYCLE,
-} from '@/lib/constants/statuses'
 import type { TaskStatus } from '@/lib/constants/statuses'
+import { TaskStatusDropdown } from '@/components/tasks/task-status-dropdown'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -20,14 +16,20 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
+  Pencil,
+  Mail,
+  Trash2,
 } from 'lucide-react'
 import { AddItemForm } from './add-item-form'
+import { EditItemForm } from './edit-item-form'
 import { InlineTimeLog } from './inline-time-log'
+import { stripJobNumberPrefix } from '@/lib/utils/formatters'
 
 export interface MyItem {
   itemId: string
   title: string
   description: string | null
+  notes: string | null
   status: string
   dueDate: string | null
   sortOrder: number
@@ -62,12 +64,19 @@ export interface ProjectRate {
   hourlyRate: number
 }
 
+export interface RoleOption {
+  role_key: string
+  label: string
+  hourly_rate: number
+}
+
 interface Props {
-  myProfile: { id: string; fullName: string; defaultHourlyRate: number }
+  myProfile: { id: string; fullName: string; role: string | null; defaultHourlyRate: number }
   items: MyItem[]
   activeProjects: ActiveProject[]
   activeTasks: ActiveTask[]
   projectRates: ProjectRate[]
+  roleRates: RoleOption[]
 }
 
 type FilterTab = 'active' | 'completed' | 'all'
@@ -81,6 +90,7 @@ export function MyWorkBoard({
   activeProjects,
   activeTasks,
   projectRates,
+  roleRates,
 }: Props) {
   const router = useRouter()
   const [items, setItems] = useState(initialItems)
@@ -88,6 +98,8 @@ export function MyWorkBoard({
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedTimeLogId, setExpandedTimeLogId] = useState<string | null>(null)
   const [showAddItem, setShowAddItem] = useState(false)
+  const [showFromEmail, setShowFromEmail] = useState(false)
+  const [editingItem, setEditingItem] = useState<MyItem | null>(null)
   const [collapsedJobs, setCollapsedJobs] = useState<Set<string>>(new Set())
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set())
 
@@ -174,12 +186,9 @@ export function MyWorkBoard({
     && isThisWeek(parseISO(it.dueDate), { weekStartsOn: 1 })
   ).length
 
-  // Status cycling
-  async function cycleStatus(itemId: string, currentStatus: string) {
-    const list = TASK_STATUS_CYCLE
-    const idx = list.indexOf(currentStatus as TaskStatus)
-    const next = idx === -1 || idx === list.length - 1 ? list[0] : list[idx + 1]
-
+  // Status change (from dropdown)
+  async function changeStatus(itemId: string, currentStatus: string, next: TaskStatus) {
+    if (next === currentStatus) return
     setItems(prev => prev.map(it =>
       it.itemId === itemId ? { ...it, status: next } : it
     ))
@@ -198,6 +207,29 @@ export function MyWorkBoard({
 
   function handleItemAdded(newItem: MyItem) {
     setItems(prev => [newItem, ...prev])
+  }
+
+  async function deleteItem(itemId: string, title: string) {
+    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return
+
+    const previous = items
+    setItems(prev => prev.filter(it => it.itemId !== itemId))
+
+    const db = createClient() as any
+    const { error } = await db.from('task_items').delete().eq('id', itemId)
+
+    if (error) {
+      setItems(previous)
+      alert(`Failed to delete item: ${error.message}`)
+    } else {
+      router.refresh()
+    }
+  }
+
+  function handleItemSaved(patch: Partial<MyItem> & { itemId: string }) {
+    setItems(prev => prev.map(it =>
+      it.itemId === patch.itemId ? { ...it, ...patch } : it
+    ))
   }
 
   function handleTimeLogged(taskId: string, hours: number) {
@@ -246,10 +278,16 @@ export function MyWorkBoard({
             )}
           </p>
         </div>
-        <Button onClick={() => setShowAddItem(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Item
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowFromEmail(true)}>
+            <Mail className="h-4 w-4 mr-2" />
+            From email
+          </Button>
+          <Button onClick={() => setShowAddItem(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Item
+          </Button>
+        </div>
       </div>
 
       {/* Filters + search */}
@@ -319,7 +357,7 @@ export function MyWorkBoard({
                     >
                       {job.jobNumber}
                     </Link>
-                    <span className="text-sm text-slate-700 truncate">{job.projectTitle}</span>
+                    <span className="text-sm text-slate-700 truncate">{stripJobNumberPrefix(job.projectTitle, job.jobNumber)}</span>
                   </button>
                   {job.clientName && (
                     <span className="text-xs text-slate-500 truncate ml-4">{job.clientName}</span>
@@ -365,12 +403,15 @@ export function MyWorkBoard({
                                   key={item.itemId}
                                   item={item}
                                   expandedTimeLogId={expandedTimeLogId}
-                                  onCycleStatus={() => cycleStatus(item.itemId, item.status)}
+                                  onChangeStatus={(next) => changeStatus(item.itemId, item.status, next)}
                                   onToggleTimeLog={() =>
                                     setExpandedTimeLogId(prev => prev === item.itemId ? null : item.itemId)
                                   }
+                                  onEdit={() => setEditingItem(item)}
+                                  onDelete={() => deleteItem(item.itemId, item.title)}
                                   myProfile={myProfile}
                                   projectRates={projectRates}
+                                  roleRates={roleRates}
                                   onTimeLogged={handleTimeLogged}
                                 />
                               ))}
@@ -396,6 +437,24 @@ export function MyWorkBoard({
         staffId={myProfile.id}
         onItemAdded={handleItemAdded}
       />
+
+      {/* From email slide-over */}
+      <AddItemForm
+        open={showFromEmail}
+        onOpenChange={setShowFromEmail}
+        projects={activeProjects}
+        tasks={activeTasks}
+        staffId={myProfile.id}
+        onItemAdded={handleItemAdded}
+        fromEmail
+      />
+
+      {/* Edit Item slide-over */}
+      <EditItemForm
+        item={editingItem}
+        onClose={() => setEditingItem(null)}
+        onSaved={handleItemSaved}
+      />
     </div>
   )
 }
@@ -404,22 +463,26 @@ export function MyWorkBoard({
 function ItemRow({
   item,
   expandedTimeLogId,
-  onCycleStatus,
+  onChangeStatus,
   onToggleTimeLog,
+  onEdit,
+  onDelete,
   myProfile,
   projectRates,
+  roleRates,
   onTimeLogged,
 }: {
   item: MyItem
   expandedTimeLogId: string | null
-  onCycleStatus: () => void
+  onChangeStatus: (next: TaskStatus) => void
   onToggleTimeLog: () => void
-  myProfile: { id: string; fullName: string; defaultHourlyRate: number }
+  onEdit: () => void
+  onDelete: () => void
+  myProfile: { id: string; fullName: string; role: string | null; defaultHourlyRate: number }
   projectRates: ProjectRate[]
+  roleRates: RoleOption[]
   onTimeLogged: (taskId: string, hours: number) => void
 }) {
-  const statusLabel = TASK_STATUSES[item.status as TaskStatus] ?? item.status
-  const statusColour = TASK_STATUS_COLOURS[item.status] ?? 'bg-slate-100 text-slate-600'
   const isOverdue = item.dueDate
     && isPast(parseISO(item.dueDate))
     && ACTIVE_STATUSES.includes(item.status)
@@ -428,14 +491,14 @@ function ItemRow({
   return (
     <>
       <div className="flex items-center gap-3 px-5 py-2.5 pl-11 hover:bg-slate-50 transition-colors">
-        {/* Status badge (clickable) */}
-        <button
-          onClick={onCycleStatus}
-          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity shrink-0 ${statusColour}`}
-          title="Click to change status"
-        >
-          {statusLabel}
-        </button>
+        {/* Status dropdown */}
+        <div className="shrink-0">
+          <TaskStatusDropdown
+            status={item.status}
+            onChange={onChangeStatus}
+            size="sm"
+          />
+        </div>
 
         {/* Title + description */}
         <div className="flex-1 min-w-0">
@@ -452,6 +515,13 @@ function ItemRow({
 
         {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={onEdit}
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+            title="Edit item"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
           <button
             onClick={onToggleTimeLog}
             className={`p-1.5 rounded transition-colors ${
@@ -470,6 +540,13 @@ function ItemRow({
           >
             <ExternalLink className="h-4 w-4" />
           </Link>
+          <button
+            onClick={onDelete}
+            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+            title="Delete item"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
@@ -479,9 +556,11 @@ function ItemRow({
             taskId={item.taskId}
             projectId={item.projectId}
             staffId={myProfile.id}
+            staffRole={myProfile.role}
             defaultHourlyRate={myProfile.defaultHourlyRate}
             feeType={item.taskFeeType}
             projectRates={projectRates}
+            roleRates={roleRates}
             defaultDescription={item.title}
             onLogged={(hrs) => onTimeLogged(item.taskId, hrs)}
             onCancel={() => onToggleTimeLog()}

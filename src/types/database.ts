@@ -39,6 +39,8 @@ export interface ScheduleEntryFull extends FieldScheduleEntryRow {
     job_number: string
     site_address: string | null
     suburb: string | null
+    site_lat: number | null
+    site_lng: number | null
     clients: { name: string; company_name: string | null } | null
     job_manager: { id: string; full_name: string } | null
   } | null
@@ -85,6 +87,21 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['clients']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['clients']['Insert']>
       }
+      client_contacts: {
+        Row: {
+          id: string
+          client_id: string
+          name: string
+          role: string | null
+          email: string | null
+          phone: string | null
+          is_primary: boolean
+          sort_order: number
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['client_contacts']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['client_contacts']['Insert']>
+      }
       task_definitions: {
         Row: {
           id: string
@@ -111,6 +128,8 @@ export type Database = {
           description: string | null
           site_address: string | null
           suburb: string | null
+          state: string | null
+          postcode: string | null
           lot_number: string | null
           section_number: string | null
           plan_number: string | null
@@ -152,6 +171,17 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['project_staff_rates']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['project_staff_rates']['Insert']>
       }
+      project_role_rates: {
+        Row: {
+          id: string
+          project_id: string
+          role_key: string
+          hourly_rate: number
+          created_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['project_role_rates']['Row'], 'id' | 'created_at'>
+        Update: Partial<Database['public']['Tables']['project_role_rates']['Insert']>
+      }
       project_tasks: {
         Row: {
           id: string
@@ -168,6 +198,10 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          approval_prepared_by: string | null
+          approval_approved_by: string | null
+          approval_method: 'email' | 'phone' | null
+          approval_date: string | null
         }
         Insert: Omit<Database['public']['Tables']['project_tasks']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['project_tasks']['Insert']>
@@ -195,6 +229,9 @@ export type Database = {
           is_billable: boolean
           rate_at_time: number
           invoice_item_id: string | null
+          written_off_at: string | null
+          written_off_by: string | null
+          is_variation: boolean
           created_at: string
           updated_at: string
         }
@@ -224,12 +261,20 @@ export type Database = {
           contact_email: string | null
           site_address: string | null
           suburb: string | null
+          state: string | null
+          postcode: string | null
           lot_number: string | null
+          section_number: string | null
           plan_number: string | null
+          lga: string | null
+          parish: string | null
+          county: string | null
           job_type: string | null
           template_key: string | null
           selected_scope_items: string[] | null
           selected_note_items: string[] | null
+          selected_quote_tasks: QuoteTask[]
+          selected_role_keys: string[] | null
         }
         Insert: Omit<Database['public']['Tables']['quotes']['Row'], 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Database['public']['Tables']['quotes']['Insert']>
@@ -287,6 +332,7 @@ export type Database = {
           task_id: string | null
           prev_claimed_amount: number | null
           sort_order: number
+          is_variation: boolean
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['invoice_items']['Row'], 'id' | 'amount' | 'created_at'>
@@ -342,10 +388,30 @@ export type Database = {
         Insert: Omit<Database['public']['Tables']['purchase_orders']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['purchase_orders']['Insert']>
       }
+      purchase_order_tasks: {
+        Row: {
+          purchase_order_id: string
+          task_id: string
+        }
+        Insert: Database['public']['Tables']['purchase_order_tasks']['Row']
+        Update: Partial<Database['public']['Tables']['purchase_order_tasks']['Row']>
+      }
       job_number_sequences: {
         Row: { year: number; last_sequence: number }
         Insert: Database['public']['Tables']['job_number_sequences']['Row']
         Update: Partial<Database['public']['Tables']['job_number_sequences']['Row']>
+      }
+      generic_notes: {
+        Row: {
+          id: string
+          text: string
+          sort_order: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: Omit<Database['public']['Tables']['generic_notes']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['generic_notes']['Insert']>
       }
       fee_proposal_templates: {
         Row: {
@@ -353,6 +419,7 @@ export type Database = {
           label: string
           scope_items: string[]
           please_note_items: string[]
+          quote_tasks: QuoteTask[]
           valid_until_days: number
           sort_order: number
           is_active: boolean
@@ -376,10 +443,20 @@ export type Database = {
   }
 }
 
+// Hierarchical quote body (stored as jsonb on templates + quotes)
+export interface QuoteInfoLine { key?: string; text: string }
+export interface QuoteItemsHeading { heading: string; lines: string[] }
+export interface QuoteTask {
+  title: string
+  price: number | null
+  itemsHeadings: QuoteItemsHeading[]
+}
+
 // Convenience row types
 export type RoleRate = Database['public']['Tables']['role_rates']['Row']
 export type StaffProfile = Database['public']['Tables']['staff_profiles']['Row']
 export type Client = Database['public']['Tables']['clients']['Row']
+export type ClientContact = Database['public']['Tables']['client_contacts']['Row']
 export type TaskDefinition = Database['public']['Tables']['task_definitions']['Row']
 export type Project = Database['public']['Tables']['projects']['Row']
 export type ProjectTask = Database['public']['Tables']['project_tasks']['Row']
@@ -387,6 +464,7 @@ export type TimeEntry = Database['public']['Tables']['time_entries']['Row']
 export type Quote = Database['public']['Tables']['quotes']['Row']
 export type QuoteItem = Database['public']['Tables']['quote_items']['Row']
 export type Invoice = Database['public']['Tables']['invoices']['Row']
+export type GenericNote = Database['public']['Tables']['generic_notes']['Row']
 
 // Extended types with joins
 export type ProjectWithClient = Project & {

@@ -37,6 +37,7 @@ export function DeleteJobButton({ projectId, jobNumber }: { projectId: string; j
     await db.from('documents').delete().eq('project_id', projectId)
     await db.from('project_contacts').delete().eq('project_id', projectId)
     await db.from('project_staff_rates').delete().eq('project_id', projectId)
+    await db.from('project_role_rates').delete().eq('project_id', projectId)
 
     const { error: delErr } = await db.from('projects').delete().eq('id', projectId)
 

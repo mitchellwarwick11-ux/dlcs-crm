@@ -34,23 +34,25 @@ export function NumberSequencesManager({ currentYear, jobLastSequence, quoteLast
 
   async function saveJobNumber() {
     setJobError(null)
-    const val = jobInput.trim()
-    if (!val.startsWith(yearPrefix)) {
-      setJobError(`Must start with ${yearPrefix} (current year)`)
+    const val   = jobInput.trim()
+    const match = val.match(/^(\d{2})(\d+)$/)
+    if (!match) {
+      setJobError('Format must be YYNNN — example: ' + nextJobStr)
       return
     }
-    const seqStr = val.slice(yearPrefix.length)
-    const seq    = parseInt(seqStr, 10)
-    if (!seqStr || isNaN(seq) || seq < 1 || String(seq) !== seqStr.replace(/^0+/, '') && seqStr !== '000') {
-      setJobError('Invalid number — example: ' + nextJobStr)
+    const yearTwoDigit = parseInt(match[1], 10)
+    const seq          = parseInt(match[2], 10)
+    if (seq < 1) {
+      setJobError('Sequence must be at least 1')
       return
     }
+    const targetYear = 2000 + yearTwoDigit
 
     setSavingJob(true)
     const db = createClient() as any
     const { error } = await db
       .from('job_number_sequences')
-      .upsert({ year: currentYear, last_sequence: seq - 1 }, { onConflict: 'year' })
+      .upsert({ year: targetYear, last_sequence: seq - 1 }, { onConflict: 'year' })
     setSavingJob(false)
 
     if (error) { setJobError('Failed to save'); return }
@@ -112,7 +114,8 @@ export function NumberSequencesManager({ currentYear, jobLastSequence, quoteLast
         </div>
         {jobError && <p className="text-xs text-red-600 mt-1.5">{jobError}</p>}
         <p className="text-xs text-slate-400 mt-1.5">
-          The next job created will use this number. Current sequence is at {nextJobStr}.
+          The next job created in {currentYear} will use this number. Current sequence is at {nextJobStr}.
+          You can also enter a different year prefix (e.g. 21500, 24123) to seed past years.
         </p>
       </div>
 

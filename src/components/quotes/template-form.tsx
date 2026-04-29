@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Plus, Trash2, GripVertical } from 'lucide-react'
-import type { FeeProposalTemplate } from '@/types/database'
+import { TaskBodyEditor, newEmptyTask } from '@/components/quotes/task-body-editor'
+import type { FeeProposalTemplate, QuoteTask } from '@/types/database'
 
 interface TemplateFormProps {
   /** Provided when editing an existing template */
@@ -27,8 +28,10 @@ export function TemplateForm({ template }: TemplateFormProps) {
   const isEdit  = !!template
 
   const [label, setLabel]   = useState(template?.label ?? '')
-  const [scopeItems, setScopeItems]   = useState<ListItem[]>(
-    toListItems(template?.scope_items ?? [])
+  const [quoteTasks, setQuoteTasks] = useState<QuoteTask[]>(
+    (template?.quote_tasks && template.quote_tasks.length > 0)
+      ? template.quote_tasks
+      : [newEmptyTask()]
   )
   const [noteItems, setNoteItems]     = useState<ListItem[]>(
     toListItems(template?.please_note_items ?? [])
@@ -70,10 +73,24 @@ export function TemplateForm({ template }: TemplateFormProps) {
     const supabase = createClient()
     const db = supabase as any
 
+    const cleanedTasks: QuoteTask[] = quoteTasks
+      .map(t => ({
+        title: t.title.trim(),
+        price: t.price,
+        itemsHeadings: t.itemsHeadings
+          .map(h => ({
+            heading: h.heading.trim(),
+            lines: h.lines.map(l => l.trim()).filter(Boolean),
+          }))
+          .filter(h => h.heading || h.lines.length > 0),
+      }))
+      .filter(t => t.title || t.itemsHeadings.length > 0)
+
     const payload = {
       label:             label.trim(),
-      scope_items:       scopeItems.map(i => i.value).filter(Boolean),
+      scope_items:       [] as string[], // legacy column; now unused
       please_note_items: noteItems.map(i => i.value).filter(Boolean),
+      quote_tasks:       cleanedTasks,
       valid_until_days:  parseInt(validUntilDays) || 60,
     }
 
@@ -176,17 +193,15 @@ export function TemplateForm({ template }: TemplateFormProps) {
         <p className="text-xs text-slate-400">Auto-sets the Valid Until date when this template is selected in a fee proposal.</p>
       </div>
 
-      {/* Scope items */}
+      {/* Quote body (Tasks → Items Headings → Info lines) */}
       <div className="space-y-2">
         <div>
-          <Label>Scope Items</Label>
-          <p className="text-xs text-slate-400 mt-0.5">The checklist shown on the fee proposal — client can see what's included.</p>
+          <Label>Quote Body</Label>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Each <strong>Quote Task</strong> contains one or more <strong>Items Headings</strong>, and each heading contains one or more <strong>information lines</strong>. Price is set per task when preparing a fee proposal.
+          </p>
         </div>
-        <ListEditor
-          items={scopeItems}
-          setter={setScopeItems}
-          placeholder="e.g. All levels and contours shown relative to AHD."
-        />
+        <TaskBodyEditor tasks={quoteTasks} onChange={setQuoteTasks} showPrices={false} />
       </div>
 
       {/* Please Note items */}

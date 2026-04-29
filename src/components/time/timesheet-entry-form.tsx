@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency } from '@/lib/utils/formatters'
+import { formatCurrency, stripJobNumberPrefix } from '@/lib/utils/formatters'
+import { USER_ROLES } from '@/lib/constants/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -41,20 +42,30 @@ interface Task {
 interface StaffMember {
   id: string
   full_name: string
+  role?: string
   default_hourly_rate: number
+}
+
+interface RoleOption {
+  role_key: string
+  label: string
+  hourly_rate: number
 }
 
 interface TimesheetEntryFormProps {
   projects: Project[]
   tasks: Task[]
   staff: StaffMember[]
+  roleRates: RoleOption[]
   currentStaffId: string | null
 }
 
-export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: TimesheetEntryFormProps) {
+export function TimesheetEntryForm({ projects, tasks, staff, roleRates, currentStaffId }: TimesheetEntryFormProps) {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [actingRole, setActingRole] = useState('')
+  const [roleTouched, setRoleTouched] = useState(false)
 
   const today = format(new Date(), 'yyyy-MM-dd')
 
@@ -82,20 +93,34 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
   const selectedStaffId = watch('staff_id')
   const watchedHours = watch('hours')
 
-  // Filter tasks to the selected project
   const projectTasks = tasks.filter(t => t.project_id === selectedProjectId)
 
-  // Rate preview uses staff default rate (project-specific override resolved on submit)
   const selectedStaff = staff.find(s => s.id === selectedStaffId)
-  const previewRate = selectedStaff?.default_hourly_rate ?? null
+
+  useEffect(() => {
+    if (!roleTouched) setActingRole(selectedStaff?.role ?? '')
+  }, [selectedStaff?.role, roleTouched])
+
+  // Rate preview: prefer global role_rates for the acting role; project override resolves on submit
+  const previewRate = (() => {
+    if (actingRole) {
+      const r = roleRates.find(rr => rr.role_key === actingRole)
+      if (r) return Number(r.hourly_rate)
+    }
+    return selectedStaff?.default_hourly_rate ?? null
+  })()
   const validHours = !isNaN(watchedHours) && watchedHours > 0 ? watchedHours : null
   const previewAmount = previewRate && validHours ? previewRate * validHours : null
 
-  // When project changes: reset task, update billable default to match project
   function handleProjectChange(e: React.ChangeEvent<HTMLSelectElement>) {
     setValue('task_id', '')
     const project = projects.find(p => p.id === e.target.value)
     if (project) setValue('is_billable', project.is_billable)
+  }
+
+  function handleRoleChange(role: string) {
+    setActingRole(role)
+    setRoleTouched(true)
   }
 
   async function onSubmit(values: FormValues) {
@@ -105,15 +130,26 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
     const supabase = createClient()
     const db = supabase as any
 
-    // Resolve rate: project-specific override → staff default
+    // Resolve rate using acting role: project override → global role_rates → staff default
+    const role = actingRole || selectedStaff?.role || null
     let rate = selectedStaff?.default_hourly_rate ?? 0
-    const { data: override } = await db
-      .from('project_staff_rates')
-      .select('hourly_rate')
-      .eq('project_id', values.project_id)
-      .eq('staff_id', values.staff_id)
-      .maybeSingle()
-    if (override?.hourly_rate) rate = override.hourly_rate
+    if (role) {
+      const { data: override } = await db
+        .from('project_role_rates')
+        .select('hourly_rate')
+        .eq('project_id', values.project_id)
+        .eq('role_key', role)
+        .maybeSingle()
+      if (override?.hourly_rate) {
+        rate = Number(override.hourly_rate)
+      } else {
+        const global = roleRates.find(r => r.role_key === role)
+        if (global) rate = Number(global.hourly_rate)
+      }
+    }
+
+    const defaultRole = selectedStaff?.role ?? null
+    const actingRoleToSave = role && role !== defaultRole ? role : null
 
     const { error: err } = await db.from('time_entries').insert({
       project_id: values.project_id,
@@ -124,6 +160,7 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
       description: values.description?.trim() || null,
       is_billable: values.is_billable,
       rate_at_time: rate,
+      acting_role: actingRoleToSave,
     })
 
     if (err) {
@@ -132,7 +169,7 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
       return
     }
 
-    // Reset but keep project + staff + billable for quick back-to-back logging
+    setRoleTouched(false)
     reset({
       project_id: values.project_id,
       task_id: '',
@@ -168,31 +205,33 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
           )}
         </div>
 
+        {/* Acting Role */}
+        <div className="space-y-1">
+          <Label>Acting As</Label>
+          <select
+            value={actingRole}
+            onChange={e => handleRoleChange(e.target.value)}
+            disabled={!selectedStaffId}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
+          >
+            <option value="">— Select role —</option>
+            {roleRates.map(r => (
+              <option key={r.role_key} value={r.role_key}>
+                {r.label}{selectedStaff?.role === r.role_key ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+          {actingRole && selectedStaff?.role && actingRole !== selectedStaff.role && (
+            <p className="text-xs text-amber-700">Differs from default ({USER_ROLES[selectedStaff.role] ?? selectedStaff.role.replace(/_/g, ' ')})</p>
+          )}
+        </div>
+
         {/* Date */}
         <div className="space-y-1">
           <Label>Date <span className="text-red-500">*</span></Label>
           <Input type="date" {...register('date')} />
           {errors.date && (
             <p className="text-xs text-red-600">{errors.date.message}</p>
-          )}
-        </div>
-
-        {/* Project */}
-        <div className="space-y-1">
-          <Label>Project <span className="text-red-500">*</span></Label>
-          <select
-            {...register('project_id', { onChange: handleProjectChange })}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="">— Select project —</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.job_number} — {p.title}
-              </option>
-            ))}
-          </select>
-          {errors.project_id && (
-            <p className="text-xs text-red-600">{errors.project_id.message}</p>
           )}
         </div>
 
@@ -218,6 +257,25 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
           ) : null}
         </div>
 
+        {/* Project */}
+        <div className="space-y-1">
+          <Label>Project <span className="text-red-500">*</span></Label>
+          <select
+            {...register('project_id', { onChange: handleProjectChange })}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="">— Select project —</option>
+            {projects.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.job_number} — {stripJobNumberPrefix(p.title, p.job_number)}
+              </option>
+            ))}
+          </select>
+          {errors.project_id && (
+            <p className="text-xs text-red-600">{errors.project_id.message}</p>
+          )}
+        </div>
+
         {/* Task — disabled until project selected */}
         <div className="space-y-1">
           <Label>Task</Label>
@@ -234,7 +292,7 @@ export function TimesheetEntryForm({ projects, tasks, staff, currentStaffId }: T
         </div>
 
         {/* Task Description */}
-        <div className="space-y-1">
+        <div className="space-y-1 md:col-span-2">
           <Label>Task Description</Label>
           <Input
             {...register('description')}

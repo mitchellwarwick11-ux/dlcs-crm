@@ -1,7 +1,20 @@
 import { z } from 'zod'
 
-export const clientSchema = z.object({
+export const clientContactSchema = z.object({
+  id: z.string().optional(),
   name: z.string().min(1, 'Name is required'),
+  role: z.string().nullable().optional(),
+  email: z.string().email('Invalid email').nullable().optional().or(z.literal('')),
+  phone: z.string().nullable().optional(),
+  is_primary: z.boolean().default(false),
+})
+
+export type ClientContactFormValues = z.infer<typeof clientContactSchema>
+
+export const clientSchema = z.object({
+  // name is validated in the form submit handler — for individuals it comes from the
+  // Full Name field, for companies it's derived from the primary contact.
+  name: z.string().optional(),
   company_name: z.string().nullable().optional(),
   email: z.string().email('Invalid email').nullable().optional().or(z.literal('')),
   phone: z.string().nullable().optional(),

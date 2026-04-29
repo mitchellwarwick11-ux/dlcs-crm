@@ -1,7 +1,9 @@
+import React from 'react'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { formatCurrency, formatDate } from '@/lib/utils/formatters'
 import { PrintBar } from '@/app/print/print-bar'
+import { fetchTaskPosForInvoice, type TaskPo } from '@/lib/utils/invoice-pos'
 
 export default async function PrintInvoicePage({
   params,
@@ -12,7 +14,7 @@ export default async function PrintInvoicePage({
   const supabase = await createClient()
   const db = supabase as any
 
-  const [{ data: invoice }, itemsResult, { data: settingsRows }] = await Promise.all([
+  const [{ data: invoice }, itemsResult, { data: settingsRows }, { data: roleRows }] = await Promise.all([
     db
       .from('invoices')
       .select(`
@@ -20,7 +22,8 @@ export default async function PrintInvoicePage({
         subtotal, gst_amount, total,
         due_date, sent_at, paid_at, created_at, notes,
         quotes ( quote_number, contact_name, contact_email, contact_phone,
-                 site_address, suburb, clients ( name, company_name ) )
+                 site_address, suburb, clients ( name, company_name ) ),
+        projects ( id, invoice_layout, invoice_show_entry_details )
       `)
       .eq('id', invoiceId)
       .single(),
@@ -28,14 +31,15 @@ export default async function PrintInvoicePage({
     db
       .from('invoice_items')
       .select(`
-        id, description, quantity, unit_price, amount, sort_order,
+        id, description, quantity, unit_price, amount, sort_order, is_variation,
         task_id, prev_claimed_amount,
-        project_tasks ( title, fee_type, quoted_amount ),
-        time_entries!time_entry_id ( date, staff_profiles ( full_name ) )
+        project_tasks ( title, fee_type, quoted_amount, quotes!quote_id ( quote_number ) ),
+        time_entries!time_entry_id ( date, acting_role, staff_profiles!staff_id ( full_name, role ) )
       `)
       .eq('invoice_id', invoiceId)
       .order('sort_order'),
     db.from('company_settings').select('key, value'),
+    db.from('role_rates').select('role_key, label'),
   ])
 
   if (!invoice) notFound()
@@ -55,8 +59,28 @@ export default async function PrintInvoicePage({
   const q        = inv.quotes as any | null
   const itemList = (items ?? []) as any[]
 
+  // POs that authorise tasks on this invoice
+  const projectIdForPos = inv.projects?.id
+  const invoiceTaskIds  = Array.from(
+    new Set(itemList.map(i => i.task_id).filter((id): id is string => !!id))
+  )
+  const taskPoMap: Map<string, TaskPo[]> = projectIdForPos
+    ? await fetchTaskPosForInvoice(db, projectIdForPos, invoiceTaskIds)
+    : new Map()
+
   const settings: Record<string, string> = {}
   for (const row of (settingsRows ?? [])) settings[row.key] = row.value
+
+  const roleLabelMap: Record<string, string> = {}
+  for (const r of (roleRows ?? [])) roleLabelMap[r.role_key] = r.label
+
+  // Effective role for an invoice item's source time entry: acting_role overrides staff default.
+  const itemRoleLabel = (item: any): string => {
+    const te = item.time_entries
+    if (!te) return '—'
+    const key = te.acting_role ?? te.staff_profiles?.role ?? ''
+    return roleLabelMap[key] ?? '—'
+  }
 
   const companyName = settings.company_name || 'Delfs Lascelles Consulting Surveyors'
   const abn         = settings.abn || ''
@@ -64,6 +88,9 @@ export default async function PrintInvoicePage({
   const bsb         = settings.bsb || ''
   const accountNum  = settings.account_number || ''
   const accountName = settings.account_name || ''
+
+  const invoiceLayout: 'role_grouped' | 'per_line' = (inv.projects?.invoice_layout ?? 'role_grouped')
+  const showEntryDetails: boolean = !!inv.projects?.invoice_show_entry_details
 
   const clientName  = q?.clients?.company_name ?? q?.clients?.name ?? null
   const contactName = q?.contact_name ?? null
@@ -79,6 +106,8 @@ export default async function PrintInvoicePage({
     thisClaim: number
     remaining: number
     claimLabel?: 'Progress Claim' | 'Final Claim'
+    quoteNumber?: string | null
+    pos: TaskPo[]
     rows: typeof itemList
   }
 
@@ -92,8 +121,11 @@ export default async function PrintInvoicePage({
     if (!groupMap.has(key)) {
       const quoted      = item.project_tasks?.quoted_amount ?? 0
       const prevClaimed = item.prev_claimed_amount ?? 0
-      const thisClaim   = feeType === 'fixed' ? (item.amount ?? item.unit_price) : 0
+      // Only the non-variation fixed-fee row anchors `thisClaim`.
+      const thisClaim   = feeType === 'fixed' && !item.is_variation ? (item.amount ?? item.unit_price) : 0
       const remaining   = Math.max(0, quoted - prevClaimed - thisClaim)
+      const taskQuotes = item.project_tasks?.quotes
+      const quoteNumber = (Array.isArray(taskQuotes) ? taskQuotes[0]?.quote_number : taskQuotes?.quote_number) ?? null
       groupMap.set(key, {
         key,
         title:      item.project_tasks?.title ?? item.description,
@@ -105,21 +137,28 @@ export default async function PrintInvoicePage({
         claimLabel: feeType === 'fixed' && hasTaskData
           ? (remaining <= 0.005 ? 'Final Claim' : 'Progress Claim')
           : undefined,
+        quoteNumber,
+        pos: item.task_id ? (taskPoMap.get(item.task_id) ?? []) : [],
         rows: [],
       })
     }
-    groupMap.get(key)!.rows.push(item)
+    const g = groupMap.get(key)!
+    if (feeType === 'fixed' && !item.is_variation && (g.thisClaim ?? 0) === 0) {
+      g.thisClaim = item.amount ?? item.unit_price
+      g.remaining = Math.max(0, (g.quoted ?? 0) - (g.prevClaimed ?? 0) - g.thisClaim)
+      if (hasTaskData) {
+        g.claimLabel = g.remaining <= 0.005 ? 'Final Claim' : 'Progress Claim'
+      }
+    }
+    g.rows.push(item)
   }
 
   const groups = Array.from(groupMap.values())
 
   return (
-    <html lang="en">
-      <head>
-        <title>{inv.invoice_number} — Tax Invoice</title>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>{`
+    <>
+      <title>{`${inv.invoice_number} — Tax Invoice`}</title>
+      <style>{`
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, sans-serif; font-size: 10pt; color: #1e293b; background: white; }
           .page { max-width: 210mm; margin: 0 auto; padding: 20mm 20mm 15mm 20mm; min-height: 297mm; }
@@ -141,7 +180,8 @@ export default async function PrintInvoicePage({
           .task-section { margin-bottom: 14pt; border: 0.75pt solid #e2e8f0; border-radius: 3pt; overflow: hidden; }
           .task-header  { display: flex; justify-content: space-between; align-items: center;
                           padding: 7pt 10pt; background: #f8fafc; border-bottom: 0.75pt solid #e2e8f0; }
-          .task-title   { font-size: 10pt; font-weight: bold; color: #1e293b; }
+          .task-title   { font-size: 10pt; font-weight: bold; color: #1e293b; display: flex; align-items: baseline; gap: 10pt; }
+          .task-quote-ref { font-size: 8.5pt; font-weight: normal; color: #64748b; letter-spacing: 0.02em; }
           .claim-badge  { font-size: 7.5pt; font-weight: bold; letter-spacing: 0.05em;
                           text-transform: uppercase; padding: 2pt 7pt; border-radius: 10pt; }
           .badge-progress { background: #fef3c7; color: #92400e; }
@@ -159,6 +199,12 @@ export default async function PrintInvoicePage({
           .fixed-row.this-claim .fixed-label { color: #1e293b; font-weight: bold; }
           .fixed-row.remaining .fixed-value  { color: #15803d; }
 
+          /* Variation block (under fixed fee) */
+          .variation-title { padding: 7pt 10pt 3pt; font-size: 8pt; font-weight: bold; letter-spacing: 0.06em;
+                             text-transform: uppercase; color: #92400e; border-top: 0.75pt solid #fcd34d;
+                             background: #fffbeb; display: flex; justify-content: space-between; align-items: baseline; gap: 10pt; }
+          .variation-title .quote-ref { font-weight: normal; color: #92400e; opacity: 0.75; text-transform: none; letter-spacing: 0.02em; }
+
           /* Hourly table */
           .hourly-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
           .hourly-table th { font-size: 7.5pt; font-weight: bold; letter-spacing: 0.05em; text-transform: uppercase;
@@ -166,6 +212,14 @@ export default async function PrintInvoicePage({
           .hourly-table th.right, .hourly-table td.right { text-align: right; }
           .hourly-table td { padding: 5pt 8pt; border-bottom: 0.5pt solid #f1f5f9; color: #334155; }
           .hourly-table td.amount { font-weight: 600; color: #1e293b; }
+
+          /* Role-grouped layout */
+          .hourly-table.role-grouped tr.role-row td { padding: 6pt 8pt; border-bottom: 0.5pt solid #cbd5e1; font-size: 10pt; }
+          .hourly-table.role-grouped tr.role-row td.role-label { font-style: italic; color: #1e293b; }
+          .hourly-table.role-grouped tr.detail-row td { border-bottom: none; padding: 2pt 8pt; font-size: 9pt; color: #475569; }
+          .hourly-table.role-grouped tr.detail-row td.detail-hrs  { color: #64748b; }
+          .hourly-table.role-grouped tr.detail-row .detail-date { color: #64748b; padding-left: 18pt; padding-right: 12pt; white-space: nowrap; }
+          .hourly-table.role-grouped tr.detail-row .detail-desc { color: #475569; }
 
           /* Simple item (old invoices without task data) */
           .simple-item { display: flex; justify-content: space-between; padding: 8pt 10pt; font-size: 10pt; }
@@ -198,11 +252,10 @@ export default async function PrintInvoicePage({
             .no-print { display: none !important; }
           }
         `}</style>
-      </head>
-      <body>
-        <PrintBar />
 
-        <div className="page">
+      <PrintBar />
+
+      <div className="page">
 
           {/* Header */}
           <div className="header">
@@ -242,7 +295,19 @@ export default async function PrintInvoicePage({
 
               {/* Section header */}
               <div className="task-header">
-                <div className="task-title">{group.title}</div>
+                <div className="task-title">
+                  <div>
+                    {group.title}
+                    {group.quoteNumber && (
+                      <span className="task-quote-ref" style={{ marginLeft: '10pt' }}>Quote #: {group.quoteNumber}</span>
+                    )}
+                    {group.pos.length > 0 && (
+                      <div className="task-quote-ref" style={{ marginTop: '2pt' }}>
+                        PO: {group.pos.map(p => p.po_number).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                </div>
                 {group.claimLabel && (
                   <div className={`claim-badge ${group.claimLabel === 'Final Claim' ? 'badge-final' : 'badge-progress'}`}>
                     {group.claimLabel}
@@ -274,6 +339,89 @@ export default async function PrintInvoicePage({
                 </div>
               )}
 
+              {/* Variations on a fixed-fee task — billed hourly under the fixed fee */}
+              {group.feeType === 'fixed' && hasTaskData && group.rows.some((i: any) => i.is_variation) && (() => {
+                const variationRows = group.rows.filter((i: any) => i.is_variation)
+                if (invoiceLayout === 'per_line') {
+                  return (
+                    <>
+                      <div className="variation-title">
+                        <span>Variations to Fixed Fee</span>
+                        {group.quoteNumber && <span className="quote-ref">Quote #: {group.quoteNumber}</span>}
+                      </div>
+                      <table className="hourly-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: '62pt' }}>Date</th>
+                            <th style={{ width: '120pt' }}>Role</th>
+                            <th>Description</th>
+                            <th className="right" style={{ width: '42pt' }}>Hrs</th>
+                            <th className="right" style={{ width: '62pt' }}>Rate</th>
+                            <th className="right" style={{ width: '68pt' }}>Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {variationRows.map((item: any) => (
+                            <tr key={item.id}>
+                              <td>{item.time_entries?.date ? formatDate(item.time_entries.date) : '—'}</td>
+                              <td>{itemRoleLabel(item)}</td>
+                              <td>{item.description}</td>
+                              <td className="right">{item.quantity}</td>
+                              <td className="right">{formatCurrency(item.unit_price)}/h</td>
+                              <td className="right amount">{formatCurrency(item.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )
+                }
+                // role_grouped
+                type RG = { roleLabel: string; hours: number; amount: number; rows: any[] }
+                const groupsByRole = new Map<string, RG>()
+                for (const item of variationRows) {
+                  const label = itemRoleLabel(item)
+                  const rg = groupsByRole.get(label) ?? { roleLabel: label, hours: 0, amount: 0, rows: [] }
+                  rg.hours  += Number(item.quantity)
+                  rg.amount += Number(item.amount)
+                  rg.rows.push(item)
+                  groupsByRole.set(label, rg)
+                }
+                return (
+                  <>
+                    <div className="variation-title">Variations to Fixed Fee</div>
+                    <table className="hourly-table role-grouped">
+                      <tbody>
+                        {Array.from(groupsByRole.values()).map((rg, gi) => {
+                          const effRate = rg.hours > 0 ? rg.amount / rg.hours : 0
+                          return (
+                            <React.Fragment key={gi}>
+                              <tr className="role-row">
+                                <td className="role-label" colSpan={2}>{rg.roleLabel}</td>
+                                <td className="right">{rg.hours.toFixed(2)}</td>
+                                <td className="right">{formatCurrency(effRate)}/h</td>
+                                <td className="right amount">{formatCurrency(rg.amount)}</td>
+                              </tr>
+                              {showEntryDetails && rg.rows.map((item: any) => (
+                                <tr key={item.id} className="detail-row">
+                                  <td colSpan={2}>
+                                    <span className="detail-date">{item.time_entries?.date ? formatDate(item.time_entries.date) : '—'}</span>
+                                    <span className="detail-desc">{item.description}</span>
+                                  </td>
+                                  <td className="right detail-hrs">{Number(item.quantity).toFixed(2)}</td>
+                                  <td></td>
+                                  <td></td>
+                                </tr>
+                              ))}
+                            </React.Fragment>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </>
+                )
+              })()}
+
               {/* Fixed fee — simple (old invoices, no task data) */}
               {(group.feeType === 'fixed' || !group.feeType) && !hasTaskData && (
                 <div className="simple-item">
@@ -282,13 +430,13 @@ export default async function PrintInvoicePage({
                 </div>
               )}
 
-              {/* Hourly — time entry table */}
-              {group.feeType === 'hourly' && (
+              {/* Hourly — per-line layout */}
+              {group.feeType === 'hourly' && invoiceLayout === 'per_line' && (
                 <table className="hourly-table">
                   <thead>
                     <tr>
                       <th style={{ width: '62pt' }}>Date</th>
-                      <th style={{ width: '100pt' }}>Staff</th>
+                      <th style={{ width: '120pt' }}>Role</th>
                       <th>Description</th>
                       <th className="right" style={{ width: '42pt' }}>Hrs</th>
                       <th className="right" style={{ width: '62pt' }}>Rate</th>
@@ -296,19 +444,85 @@ export default async function PrintInvoicePage({
                     </tr>
                   </thead>
                   <tbody>
-                    {group.rows.map((item: any) => (
-                      <tr key={item.id}>
-                        <td>{item.time_entries?.date ? formatDate(item.time_entries.date) : '—'}</td>
-                        <td>{item.time_entries?.staff_profiles?.full_name ?? '—'}</td>
-                        <td>{item.description}</td>
-                        <td className="right">{item.quantity}</td>
-                        <td className="right">{formatCurrency(item.unit_price)}/h</td>
-                        <td className="right amount">{formatCurrency(item.amount)}</td>
-                      </tr>
-                    ))}
+                    {group.rows.map((item: any) => {
+                      const isAdjustment = !item.time_entries
+                      if (isAdjustment) {
+                        return (
+                          <tr key={item.id}>
+                            <td colSpan={5} style={{ fontStyle: 'italic', color: '#475569' }}>{item.description}</td>
+                            <td className="right amount">{formatCurrency(item.amount)}</td>
+                          </tr>
+                        )
+                      }
+                      return (
+                        <tr key={item.id}>
+                          <td>{item.time_entries?.date ? formatDate(item.time_entries.date) : '—'}</td>
+                          <td>{itemRoleLabel(item)}</td>
+                          <td>{item.description}</td>
+                          <td className="right">{item.quantity}</td>
+                          <td className="right">{formatCurrency(item.unit_price)}/h</td>
+                          <td className="right amount">{formatCurrency(item.amount)}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               )}
+
+              {/* Hourly — role-grouped layout */}
+              {group.feeType === 'hourly' && invoiceLayout === 'role_grouped' && (() => {
+                type RG = { roleLabel: string; hours: number; amount: number; rows: any[] }
+                const groupsByRole = new Map<string, RG>()
+                const adjustmentRows: any[] = []
+                for (const item of group.rows) {
+                  if (!item.time_entries) {
+                    adjustmentRows.push(item)
+                    continue
+                  }
+                  const label = itemRoleLabel(item)
+                  const g = groupsByRole.get(label) ?? { roleLabel: label, hours: 0, amount: 0, rows: [] }
+                  g.hours  += Number(item.quantity)
+                  g.amount += Number(item.amount)
+                  g.rows.push(item)
+                  groupsByRole.set(label, g)
+                }
+                return (
+                  <table className="hourly-table role-grouped">
+                    <tbody>
+                      {Array.from(groupsByRole.values()).map((g, gi) => {
+                        const effRate = g.hours > 0 ? g.amount / g.hours : 0
+                        return (
+                          <React.Fragment key={gi}>
+                            <tr className="role-row">
+                              <td className="role-label" colSpan={2}>{g.roleLabel}</td>
+                              <td className="right">{g.hours.toFixed(2)}</td>
+                              <td className="right">{formatCurrency(effRate)}/h</td>
+                              <td className="right amount">{formatCurrency(g.amount)}</td>
+                            </tr>
+                            {showEntryDetails && g.rows.map((item: any) => (
+                              <tr key={item.id} className="detail-row">
+                                <td colSpan={2}>
+                                  <span className="detail-date">{item.time_entries?.date ? formatDate(item.time_entries.date) : '—'}</span>
+                                  <span className="detail-desc">{item.description}</span>
+                                </td>
+                                <td className="right detail-hrs">{Number(item.quantity).toFixed(2)}</td>
+                                <td></td>
+                                <td></td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        )
+                      })}
+                      {adjustmentRows.map((item: any) => (
+                        <tr key={item.id} className="role-row">
+                          <td className="role-label" colSpan={4} style={{ fontStyle: 'italic', color: '#475569' }}>{item.description}</td>
+                          <td className="right amount">{formatCurrency(item.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              })()}
             </div>
           ))}
 
@@ -360,8 +574,7 @@ export default async function PrintInvoicePage({
             <div>{companyName}{abn ? ` — ABN: ${abn}` : ''}</div>
           </div>
 
-        </div>
-      </body>
-    </html>
+      </div>
+    </>
   )
 }

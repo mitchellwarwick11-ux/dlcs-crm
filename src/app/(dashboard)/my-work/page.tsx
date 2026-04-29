@@ -12,7 +12,7 @@ export default async function MyWorkPage() {
   // Get current user's profile
   const { data: myProfile } = await db
     .from('staff_profiles')
-    .select('id, full_name, access_level, default_hourly_rate')
+    .select('id, full_name, access_level, role, default_hourly_rate')
     .eq('email', user.email)
     .eq('is_active', true)
     .maybeSingle()
@@ -35,13 +35,14 @@ export default async function MyWorkPage() {
     { data: activeProjects },
     { data: projectRates },
     { data: allActiveTasks },
+    { data: roleRates },
   ] = await Promise.all([
     // 1. My assigned items (with full hierarchy: item → task → project → client)
     db.from('task_item_assignments')
       .select(`
         id,
         task_items (
-          id, title, description, status, due_date, sort_order, task_id,
+          id, title, description, notes, status, due_date, sort_order, task_id,
           project_tasks (
             id, title, status, fee_type, project_id,
             projects (
@@ -64,16 +65,22 @@ export default async function MyWorkPage() {
       .in('status', ['active', 'on_hold'])
       .order('job_number', { ascending: false }),
 
-    // 4. Project-specific rate overrides for this user (for inline time log)
-    db.from('project_staff_rates')
+    // 4. Project-specific role-rate overrides for this user's role (for inline time log)
+    db.from('project_role_rates')
       .select('project_id, hourly_rate')
-      .eq('staff_id', myProfile.id),
+      .eq('role_key', myProfile.role),
 
     // 5. All active tasks (for add-item form's Task dropdown)
     db.from('project_tasks')
       .select('id, project_id, title, fee_type')
       .not('status', 'in', '("completed","cancelled")')
       .order('title'),
+
+    // 6. Active roles (for the inline time log "Acting As" dropdown)
+    db.from('role_rates')
+      .select('role_key, label, hourly_rate')
+      .eq('is_active', true)
+      .order('sort_order'),
   ])
 
   // Aggregate hours by task_id
@@ -95,6 +102,7 @@ export default async function MyWorkPage() {
         itemId: item.id,
         title: item.title,
         description: item.description,
+        notes: item.notes,
         status: item.status,
         dueDate: item.due_date,
         sortOrder: item.sort_order,
@@ -116,6 +124,7 @@ export default async function MyWorkPage() {
       myProfile={{
         id: myProfile.id,
         fullName: myProfile.full_name,
+        role: myProfile.role ?? null,
         defaultHourlyRate: myProfile.default_hourly_rate ?? 0,
       }}
       items={items}
@@ -135,6 +144,7 @@ export default async function MyWorkPage() {
         projectId: r.project_id,
         hourlyRate: r.hourly_rate,
       }))}
+      roleRates={(roleRates ?? []) as any[]}
     />
   )
 }

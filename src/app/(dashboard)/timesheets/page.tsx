@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { TimesheetEntryForm } from '@/components/time/timesheet-entry-form'
 import { TimeEntryRow } from '@/components/time/time-entry-row'
+import { WeeklyGrid } from '@/components/time/weekly-grid'
+import { MonthlyOverview } from '@/components/time/monthly-overview'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatHours } from '@/lib/utils/formatters'
@@ -16,6 +18,10 @@ import {
   format,
   parseISO,
   isToday,
+  addMonths,
+  subMonths,
+  setDate,
+  getDate,
 } from 'date-fns'
 
 function getWeekBounds(weekParam?: string) {
@@ -25,12 +31,42 @@ function getWeekBounds(weekParam?: string) {
   return { start, end }
 }
 
+type ViewMode = 'daily' | 'weekly' | 'monthly'
+
 export default async function TimesheetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>
+  searchParams: Promise<{ week?: string; view?: string; month?: string; cycleStart?: string }>
 }) {
   const params = await searchParams
+  const view: ViewMode =
+    params.view === 'weekly' || params.view === 'monthly' ? params.view : 'daily'
+
+  // Invoicing cycle settings
+  const cycleStartDay = Math.min(28, Math.max(1, parseInt(params.cycleStart ?? '13', 10) || 13))
+
+  // Compute current invoicing cycle based on today (or ?month=yyyy-MM-dd which should be a cycle-start date)
+  function computeCycle(base: Date, startDay: number) {
+    // The cycle containing `base` is: if day(base) >= startDay then [startDay of base's month .. startDay-1 of next month]
+    // else [startDay of previous month .. startDay-1 of base's month]
+    const baseDay = getDate(base)
+    let cycleStart: Date
+    if (baseDay >= startDay) {
+      cycleStart = setDate(base, startDay)
+    } else {
+      cycleStart = setDate(subMonths(base, 1), startDay)
+    }
+    const cycleEnd = addMonths(cycleStart, 1)
+    cycleEnd.setDate(cycleEnd.getDate() - 1)
+    return { cycleStart, cycleEnd }
+  }
+  const cycleBase = params.month ? parseISO(params.month) : new Date()
+  const { cycleStart: mCycleStart, cycleEnd: mCycleEnd } = computeCycle(cycleBase, cycleStartDay)
+  const monthStart = format(mCycleStart, 'yyyy-MM-dd')
+  const monthEnd   = format(mCycleEnd,   'yyyy-MM-dd')
+  const prevCycleStart = format(subMonths(mCycleStart, 1), 'yyyy-MM-dd')
+  const nextCycleStart = format(addMonths(mCycleStart, 1), 'yyyy-MM-dd')
+  const currentCycleStart = format(computeCycle(new Date(), cycleStartDay).cycleStart, 'yyyy-MM-dd')
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -41,7 +77,7 @@ export default async function TimesheetsPage({
   // Find the logged-in user's staff profile by matching email
   const { data: myProfile } = await db
     .from('staff_profiles')
-    .select('id, full_name')
+    .select('id, full_name, role')
     .eq('email', user.email)
     .eq('is_active', true)
     .maybeSingle()
@@ -55,20 +91,48 @@ export default async function TimesheetsPage({
   const nextWeek   = format(addWeeks(start, 1), 'yyyy-MM-dd')
   const weekLabel  = `${format(start, 'd MMM')} – ${format(end, 'd MMM yyyy')}`
 
+  const buildHref = (v: ViewMode, week?: string) => {
+    const qs = new URLSearchParams()
+    if (v !== 'daily') qs.set('view', v)
+    if (week) qs.set('week', week)
+    if (v === 'monthly') {
+      if (params.month) qs.set('month', params.month)
+      if (params.cycleStart) qs.set('cycleStart', params.cycleStart)
+    }
+    const s = qs.toString()
+    return s ? `/timesheets?${s}` : '/timesheets'
+  }
+
+  const buildMonthlyHref = (opts: { month?: string; cycleStart?: number }) => {
+    const qs = new URLSearchParams()
+    qs.set('view', 'monthly')
+    const m = opts.month ?? params.month
+    const c = opts.cycleStart !== undefined ? String(opts.cycleStart) : params.cycleStart
+    if (m) qs.set('month', m)
+    if (c) qs.set('cycleStart', c)
+    return `/timesheets?${qs.toString()}`
+  }
+
+  const prevWeekEnd = format(subWeeks(end, 1), 'yyyy-MM-dd')
+  const prevWeekStart = format(subWeeks(start, 1), 'yyyy-MM-dd')
+
   const [
     { data: entries },
     { data: projects },
     { data: tasks },
     { data: staff },
+    { data: prevEntries },
+    { data: monthEntries },
+    { data: roleRates },
   ] = await Promise.all([
     // Only fetch entries for the current user
     myStaffId
       ? db
           .from('time_entries')
           .select(`
-            id, date, hours, description, is_billable, rate_at_time, invoice_item_id,
+            id, date, hours, description, is_billable, is_variation, rate_at_time, invoice_item_id,
             task_id, staff_id, project_id,
-            staff_profiles ( full_name ),
+            staff_profiles!staff_id ( full_name ),
             project_tasks ( title ),
             projects ( job_number, title )
           `)
@@ -80,7 +144,7 @@ export default async function TimesheetsPage({
       : Promise.resolve({ data: [] }),
     db
       .from('projects')
-      .select('id, job_number, title, is_billable')
+      .select('id, job_number, title, is_billable, clients ( name, company_name )')
       .in('status', ['active', 'on_hold'])
       .order('job_number', { ascending: false }),
     db
@@ -91,15 +155,49 @@ export default async function TimesheetsPage({
       .order('sort_order'),
     db
       .from('staff_profiles')
-      .select('id, full_name, default_hourly_rate')
+      .select('id, full_name, role, default_hourly_rate')
       .eq('is_active', true)
       .order('full_name'),
+    myStaffId
+      ? db
+          .from('time_entries')
+          .select('id, date, hours, description, is_billable, rate_at_time, invoice_item_id, task_id, staff_id, project_id')
+          .eq('staff_id', myStaffId)
+          .gte('date', prevWeekStart)
+          .lte('date', prevWeekEnd)
+      : Promise.resolve({ data: [] }),
+    myStaffId && view === 'monthly'
+      ? db
+          .from('time_entries')
+          .select('id, date, hours, is_billable, rate_at_time, invoice_item_id, project_id, task_id')
+          .eq('staff_id', myStaffId)
+          .gte('date', monthStart)
+          .lte('date', monthEnd)
+      : Promise.resolve({ data: [] }),
+    db
+      .from('role_rates')
+      .select('role_key, label, hourly_rate')
+      .eq('is_active', true)
+      .order('sort_order'),
   ])
 
   const entryList  = (entries  ?? []) as any[]
   const projectList = (projects ?? []) as any[]
   const taskList   = (tasks    ?? []) as any[]
   const staffList  = (staff    ?? []) as any[]
+  const prevEntryList = (prevEntries ?? []) as any[]
+  const roleList   = (roleRates ?? []) as any[]
+
+  // Project list flattened with client_name for grid display
+  const projectsForGrid = projectList.map((p: any) => ({
+    id: p.id,
+    job_number: p.job_number,
+    title: p.title,
+    is_billable: p.is_billable,
+    client_name: p.clients?.company_name ?? p.clients?.name ?? null,
+  }))
+
+  const myStaffRate = staffList.find((s: any) => s.id === myStaffId)?.default_hourly_rate ?? 0
 
   // Group entries by date
   const days = eachDayOfInterval({ start, end })
@@ -133,67 +231,125 @@ export default async function TimesheetsPage({
         </div>
       )}
 
+      {/* View tabs */}
+      <div className="flex items-center justify-between border-b border-slate-200">
+        <div className="flex items-center gap-1">
+          {(['daily', 'weekly', 'monthly'] as ViewMode[]).map(v => (
+            <Link
+              key={v}
+              href={buildHref(v, params.week)}
+              className={
+                'px-4 py-2 text-sm font-medium -mb-px border-b-2 capitalize transition-colors ' +
+                (view === v
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-700')
+              }
+            >
+              {v}
+            </Link>
+          ))}
+        </div>
+      </div>
+
       {/* Log Time */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Log Time</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TimesheetEntryForm
-            projects={projectList}
-            tasks={taskList}
-            staff={staffList}
-            currentStaffId={myStaffId}
-          />
-        </CardContent>
-      </Card>
+      {view === 'daily' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Log Time</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TimesheetEntryForm
+              projects={projectList}
+              tasks={taskList}
+              staff={staffList}
+              roleRates={roleList}
+              currentStaffId={myStaffId}
+            />
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Week navigation */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-slate-900">Week of {weekLabel}</h2>
-        <div className="flex items-center gap-2">
-          <Link href={`/timesheets?week=${prevWeek}`}>
-            <Button variant="outline" size="sm">
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              Prev
-            </Button>
-          </Link>
-          <Link href="/timesheets">
-            <Button variant="outline" size="sm">This week</Button>
-          </Link>
-          <Link href={`/timesheets?week=${nextWeek}`}>
-            <Button variant="outline" size="sm">
-              Next
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </Link>
+      {/* Week navigation (daily + weekly only) */}
+      {view !== 'monthly' && (
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">Week of {weekLabel}</h2>
+          <div className="flex items-center gap-2">
+            <Link href={buildHref(view, prevWeek)}>
+              <Button variant="outline" size="sm">
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Prev
+              </Button>
+            </Link>
+            <Link href={buildHref(view)}>
+              <Button variant="outline" size="sm">This week</Button>
+            </Link>
+            <Link href={buildHref(view, nextWeek)}>
+              <Button variant="outline" size="sm">
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Weekly summary */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg border-2 border-slate-300 px-4 py-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Hours</p>
-          <p className="text-2xl font-bold text-slate-900">{formatHours(totalHours)}</p>
+      {/* Weekly summary (daily + weekly only) */}
+      {view !== 'monthly' && (
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg border-2 border-slate-300 px-4 py-4">
+            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Hours</p>
+            <p className="text-2xl font-bold text-slate-900">{formatHours(totalHours)}</p>
+          </div>
+          <div className="bg-white rounded-lg border border-slate-200 px-4 py-4">
+            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Billable Hours</p>
+            <p className="text-2xl font-semibold text-slate-900">{formatHours(billableHours)}</p>
+          </div>
+          <div className="bg-white rounded-lg border border-slate-200 px-4 py-4">
+            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Non-Billable</p>
+            <p className="text-2xl font-semibold text-slate-500">{formatHours(nonBillableHours)}</p>
+          </div>
         </div>
-        <div className="bg-white rounded-lg border border-slate-200 px-4 py-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Billable Hours</p>
-          <p className="text-2xl font-semibold text-slate-900">{formatHours(billableHours)}</p>
-        </div>
-        <div className="bg-white rounded-lg border border-slate-200 px-4 py-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Non-Billable</p>
-          <p className="text-2xl font-semibold text-slate-500">{formatHours(nonBillableHours)}</p>
-        </div>
-      </div>
+      )}
 
-      {/* Days */}
-      {entryList.length === 0 ? (
+      {/* Weekly grid view */}
+      {view === 'weekly' && (
+        <WeeklyGrid
+          weekDays={days.map(d => format(d, 'yyyy-MM-dd'))}
+          prevWeekStart={prevWeekStart}
+          entries={entryList as any}
+          prevEntries={prevEntryList as any}
+          projects={projectsForGrid}
+          tasks={taskList}
+          staffId={myStaffId}
+          staffRate={myStaffRate}
+          staffRole={myProfile?.role ?? null}
+        />
+      )}
+
+      {/* Monthly overview */}
+      {view === 'monthly' && (
+        <MonthlyOverview
+          cycleStart={monthStart}
+          cycleEnd={monthEnd}
+          cycleStartDay={cycleStartDay}
+          prevHref={buildMonthlyHref({ month: prevCycleStart })}
+          nextHref={buildMonthlyHref({ month: nextCycleStart })}
+          currentHref={buildMonthlyHref({ month: currentCycleStart })}
+          currentMonth={params.month ?? monthStart}
+          entries={(monthEntries ?? []) as any}
+          projects={projectsForGrid}
+        />
+      )}
+
+      {/* Days (daily view) */}
+      {view === 'daily' && (
+      entryList.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border border-slate-200">
           <p className="text-sm text-slate-500">No time logged this week.</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {days.map(day => {
+          {[...days].reverse().map(day => {
             const dateKey  = format(day, 'yyyy-MM-dd')
             const dayEntries = entriesByDate[dateKey]
             if (dayEntries.length === 0) return null
@@ -256,7 +412,7 @@ export default async function TimesheetsPage({
             )
           })}
         </div>
-      )}
+      ))}
     </div>
   )
 }

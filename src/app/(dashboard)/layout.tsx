@@ -48,7 +48,7 @@ export default async function DashboardLayout({
     .order('full_name')).data ?? [])
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-dlcs-canvas text-dlcs-ink">
       <Sidebar
         myProfile={myProfile ?? null}
         viewAsProfile={viewAsProfile ?? null}

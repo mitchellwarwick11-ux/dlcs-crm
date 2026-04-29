@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -41,7 +41,13 @@ interface Task {
 }
 
 interface ProjectRate {
-  staff_id: string
+  role_key: string
+  hourly_rate: number
+}
+
+interface RoleOption {
+  role_key: string
+  label: string
   hourly_rate: number
 }
 
@@ -50,17 +56,19 @@ interface LogTimeFormProps {
   staff: StaffMember[]
   tasks: Task[]
   projectRates: ProjectRate[]
+  roleRates: RoleOption[]
   defaultBillable: boolean
 }
 
-export function LogTimeForm({ projectId, staff, tasks, projectRates, defaultBillable }: LogTimeFormProps) {
+export function LogTimeForm({ projectId, staff, tasks, projectRates, roleRates, defaultBillable }: LogTimeFormProps) {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]           = useState<string | null>(null)
 
-  // Controlled state for interactive selects / checkboxes
   const [staffId, setStaffId]       = useState('')
   const [taskId, setTaskId]         = useState('')
+  const [actingRole, setActingRole] = useState('')
+  const [roleTouched, setRoleTouched] = useState(false)
   const [isBillable, setIsBillable] = useState(defaultBillable)
   const [isVariation, setIsVariation] = useState(false)
 
@@ -76,19 +84,35 @@ export function LogTimeForm({ projectId, staff, tasks, projectRates, defaultBill
 
   const watchedHours = watch('hours')
 
-  // Filter out completed/cancelled tasks — they cannot receive new time
   const activeTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')
 
   const selectedStaff = staff.find(s => s.id === staffId)
-  const roleLabel = selectedStaff ? (USER_ROLES[selectedStaff.role] ?? selectedStaff.role.replace(/_/g, ' ')) : null
 
-  const previewRate  = staffId ? resolveRate(staffId, staff, projectRates) : null
+  // Default the role to the staff member's default role until the user picks one explicitly
+  useEffect(() => {
+    if (!roleTouched) {
+      setActingRole(selectedStaff?.role ?? '')
+    }
+  }, [selectedStaff?.role, roleTouched])
+
+  const previewRate = staffId
+    ? resolveRate(staffId, staff, projectRates, actingRole || null, roleRates)
+    : null
   const validHours   = !isNaN(watchedHours) && watchedHours > 0 ? watchedHours : null
   const previewAmount = previewRate && validHours ? previewRate * validHours : null
 
   function handleStaffChange(id: string) {
     setStaffId(id)
     setValue('staff_id', id)
+    if (!roleTouched) {
+      const s = staff.find(m => m.id === id)
+      setActingRole(s?.role ?? '')
+    }
+  }
+
+  function handleRoleChange(role: string) {
+    setActingRole(role)
+    setRoleTouched(true)
   }
 
   function handleTaskChange(id: string) {
@@ -104,10 +128,7 @@ export function LogTimeForm({ projectId, staff, tasks, projectRates, defaultBill
 
   function handleVariationToggle(checked: boolean) {
     setIsVariation(checked)
-    if (checked) {
-      setTaskId('')            // clear manual task selection
-      setIsBillable(true)     // variations are billable extras
-    }
+    if (checked) setIsBillable(true)
   }
 
   async function onSubmit(values: FormValues) {
@@ -115,44 +136,29 @@ export function LogTimeForm({ projectId, staff, tasks, projectRates, defaultBill
     setError(null)
     const db = createClient() as any
 
-    // Resolve rate
-    const rate = resolveRate(staffId, staff, projectRates)
-
-    // Determine final task_id
-    let finalTaskId: string | null = taskId || null
-
-    if (isVariation) {
-      // Find or auto-create the "Variation" task for this project
-      const { data: existing } = await db
-        .from('project_tasks')
-        .select('id')
-        .eq('project_id', projectId)
-        .eq('title', 'Variation')
-        .neq('status', 'cancelled')
-        .maybeSingle()
-
-      if (existing) {
-        finalTaskId = existing.id
-      } else {
-        const { data: created } = await db
-          .from('project_tasks')
-          .insert({ project_id: projectId, title: 'Variation', fee_type: 'hourly',
-                    status: 'in_progress', sort_order: 999 })
-          .select('id')
-          .single()
-        finalTaskId = created?.id ?? null
-      }
+    if (isVariation && !taskId) {
+      setError('Pick the task this variation relates to.')
+      setSubmitting(false)
+      return
     }
 
+    const rate = resolveRate(staffId, staff, projectRates, actingRole || null, roleRates)
+    const defaultRole = selectedStaff?.role ?? null
+    // Only persist acting_role when it differs from the staff member's default — keeps
+    // "no override" rows as NULL, matching all pre-migration data.
+    const actingRoleToSave = actingRole && actingRole !== defaultRole ? actingRole : null
+
     const { error: err } = await db.from('time_entries').insert({
-      project_id:  projectId,
-      task_id:     finalTaskId,
-      staff_id:    staffId,
-      date:        values.date,
-      hours:       values.hours,
-      description: values.description?.trim() || null,
-      is_billable: isBillable,
+      project_id:   projectId,
+      task_id:      taskId || null,
+      staff_id:     staffId,
+      date:         values.date,
+      hours:        values.hours,
+      description:  values.description?.trim() || null,
+      is_billable:  isBillable,
+      is_variation: isVariation,
       rate_at_time: rate,
+      acting_role:  actingRoleToSave,
     })
 
     if (err) {
@@ -161,9 +167,9 @@ export function LogTimeForm({ projectId, staff, tasks, projectRates, defaultBill
       return
     }
 
-    // Reset — keep staff + date + billable for quick back-to-back logging
     setTaskId('')
     setIsVariation(false)
+    setRoleTouched(false)
     reset({
       staff_id: staffId, task_id: '', date: values.date,
       hours: undefined, description: '', is_billable: isBillable,
@@ -177,10 +183,9 @@ export function LogTimeForm({ projectId, staff, tasks, projectRates, defaultBill
       onSubmit={handleSubmit(data => onSubmit({ ...data, staff_id: staffId, task_id: taskId, is_billable: isBillable }))}
       className="space-y-4"
     >
-      {/* Row 1: Staff + Role | Date | Hours */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Row 1: Staff | Role | Date | Hours */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
 
-        {/* Staff + auto-role */}
         <div className="space-y-1">
           <Label>Staff Member <span className="text-red-500">*</span></Label>
           <select
@@ -193,20 +198,36 @@ export function LogTimeForm({ projectId, staff, tasks, projectRates, defaultBill
               <option key={s.id} value={s.id}>{s.full_name}</option>
             ))}
           </select>
-          {roleLabel && (
-            <p className="text-xs text-slate-500">Role: <span className="font-medium">{roleLabel}</span></p>
-          )}
           {errors.staff_id && <p className="text-xs text-red-600">{errors.staff_id.message}</p>}
         </div>
 
-        {/* Date */}
+        {/* Acting Role */}
+        <div className="space-y-1">
+          <Label>Acting As</Label>
+          <select
+            value={actingRole}
+            onChange={e => handleRoleChange(e.target.value)}
+            disabled={!staffId}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
+          >
+            <option value="">— Select role —</option>
+            {roleRates.map(r => (
+              <option key={r.role_key} value={r.role_key}>
+                {r.label}{selectedStaff && r.role_key === selectedStaff.role ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+          {actingRole && selectedStaff && actingRole !== selectedStaff.role && (
+            <p className="text-xs text-amber-700">Differs from default ({USER_ROLES[selectedStaff.role] ?? selectedStaff.role.replace(/_/g, ' ')})</p>
+          )}
+        </div>
+
         <div className="space-y-1">
           <Label>Date <span className="text-red-500">*</span></Label>
           <Input type="date" {...register('date')} />
           {errors.date && <p className="text-xs text-red-600">{errors.date.message}</p>}
         </div>
 
-        {/* Hours */}
         <div className="space-y-1">
           <Label>Hours <span className="text-red-500">*</span></Label>
           <Input type="number" step="0.25" min="0.25" placeholder="e.g. 2.5"
@@ -227,34 +248,30 @@ export function LogTimeForm({ projectId, staff, tasks, projectRates, defaultBill
       {/* Row 2: Task | Task Description | Variation */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
 
-        {/* Task */}
         <div className="space-y-1">
-          <Label>Task</Label>
-          {isVariation ? (
-            <div className="px-3 py-2 rounded-md border border-amber-300 bg-amber-50 text-sm text-amber-700 font-medium">
-              Variation <span className="font-normal text-amber-500">(auto-assigned)</span>
-            </div>
-          ) : (
-            <select
-              value={taskId}
-              onChange={e => handleTaskChange(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">— No task —</option>
-              {activeTasks.map(t => (
-                <option key={t.id} value={t.id}>{t.title}</option>
-              ))}
-            </select>
+          <Label>Task {isVariation && <span className="text-red-500">*</span>}</Label>
+          <select
+            value={taskId}
+            onChange={e => handleTaskChange(e.target.value)}
+            className={`w-full rounded-md border bg-background px-3 py-2 text-sm ${
+              isVariation ? 'border-amber-300 bg-amber-50/40' : 'border-input'
+            }`}
+          >
+            <option value="">— No task —</option>
+            {activeTasks.map(t => (
+              <option key={t.id} value={t.id}>{t.title}</option>
+            ))}
+          </select>
+          {isVariation && (
+            <p className="text-xs text-amber-700">Variation will be billed hourly under this task.</p>
           )}
         </div>
 
-        {/* Task Description (was Notes) */}
         <div className="space-y-1">
           <Label>Task Description</Label>
           <Input {...register('description')} placeholder="Description of work done" />
         </div>
 
-        {/* Variation checkbox */}
         <div className="space-y-1">
           <Label className="invisible">.</Label>
           <label className="flex items-start gap-2 cursor-pointer select-none rounded-md border border-slate-200 px-3 py-2 hover:bg-slate-50 transition-colors">
@@ -272,7 +289,6 @@ export function LogTimeForm({ projectId, staff, tasks, projectRates, defaultBill
         </div>
       </div>
 
-      {/* Footer: Billable + Submit */}
       <div className="flex items-center justify-between pt-1">
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input

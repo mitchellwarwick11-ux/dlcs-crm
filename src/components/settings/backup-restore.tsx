@@ -17,11 +17,14 @@ export function ExportBackupButton() {
 
     const [
       { data: clients },
+      { data: taskDefinitions },
       { data: projects },
       { data: projectContacts },
       { data: projectStaffRates },
       { data: tasks },
       { data: taskAssignments },
+      { data: taskItems },
+      { data: taskItemAssignments },
       { data: quotes },
       { data: quoteItems },
       { data: invoices },
@@ -29,13 +32,17 @@ export function ExportBackupButton() {
       { data: timeEntries },
       { data: documents },
       { data: purchaseOrders },
+      { data: purchaseOrderTasks },
     ] = await Promise.all([
       db.from('clients').select('*'),
+      db.from('task_definitions').select('*'),
       db.from('projects').select('*'),
       db.from('project_contacts').select('*'),
       db.from('project_staff_rates').select('*'),
       db.from('project_tasks').select('*'),
       db.from('task_assignments').select('*'),
+      db.from('task_items').select('*'),
+      db.from('task_item_assignments').select('*'),
       db.from('quotes').select('*'),
       db.from('quote_items').select('*'),
       db.from('invoices').select('*'),
@@ -43,24 +50,29 @@ export function ExportBackupButton() {
       db.from('time_entries').select('*'),
       db.from('documents').select('*'),
       db.from('purchase_orders').select('*'),
+      db.from('purchase_order_tasks').select('*'),
     ])
 
     const backup = {
-      version: 2,
+      version: 3,
       exported_at: new Date().toISOString(),
-      clients:            clients            ?? [],
-      projects:           projects           ?? [],
-      project_contacts:   projectContacts    ?? [],
-      project_staff_rates: projectStaffRates ?? [],
-      project_tasks:      tasks              ?? [],
-      task_assignments:   taskAssignments    ?? [],
-      quotes:             quotes             ?? [],
-      quote_items:        quoteItems         ?? [],
-      invoices:           invoices           ?? [],
-      invoice_items:      invoiceItems       ?? [],
-      time_entries:       timeEntries        ?? [],
-      documents:          documents          ?? [],
-      purchase_orders:    purchaseOrders     ?? [],
+      clients:               clients             ?? [],
+      task_definitions:      taskDefinitions     ?? [],
+      projects:              projects            ?? [],
+      project_contacts:      projectContacts     ?? [],
+      project_staff_rates:   projectStaffRates   ?? [],
+      project_tasks:         tasks               ?? [],
+      task_assignments:      taskAssignments     ?? [],
+      task_items:            taskItems           ?? [],
+      task_item_assignments: taskItemAssignments ?? [],
+      quotes:                quotes              ?? [],
+      quote_items:           quoteItems          ?? [],
+      invoices:              invoices            ?? [],
+      invoice_items:         invoiceItems        ?? [],
+      time_entries:          timeEntries         ?? [],
+      documents:             documents           ?? [],
+      purchase_orders:       purchaseOrders      ?? [],
+      purchase_order_tasks:  purchaseOrderTasks  ?? [],
     }
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
@@ -133,6 +145,8 @@ export function RestoreBackupButton() {
     const invoiceIds = (invoiceRows ?? []).map((r: any) => r.id)
     const quoteIds   = (quoteRows   ?? []).map((r: any) => r.id)
 
+    await db.from('task_item_assignments').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    await db.from('task_items').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     await db.from('time_entries').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     if (taskIds.length)    await db.from('task_assignments').delete().in('task_id', taskIds)
     await db.from('project_tasks').delete().neq('id', '00000000-0000-0000-0000-000000000000')
@@ -140,12 +154,14 @@ export function RestoreBackupButton() {
     await db.from('invoices').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     if (quoteIds.length)   await db.from('quote_items').delete().in('quote_id', quoteIds)
     await db.from('quotes').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    await db.from('purchase_order_tasks').delete().gte('purchase_order_id', '00000000-0000-0000-0000-000000000000')
     await db.from('purchase_orders').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     await db.from('documents').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     await db.from('project_contacts').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     await db.from('project_staff_rates').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     await db.from('projects').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     await db.from('clients').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    await db.from('task_definitions').delete().neq('id', '00000000-0000-0000-0000-000000000000')
 
     // Helper: batch insert in chunks of 50
     async function insertBatch(table: string, rows: any[], label: string) {
@@ -160,15 +176,18 @@ export function RestoreBackupButton() {
 
     try {
       // ── 2. Re-insert in dependency order ──────────────────────────────
-      await insertBatch('clients',             backup.clients,             'clients')
-      await insertBatch('projects',            backup.projects,            'jobs')
-      await insertBatch('project_contacts',    backup.project_contacts,    'project contacts')
-      await insertBatch('project_staff_rates', backup.project_staff_rates, 'project staff rates')
-      await insertBatch('project_tasks',       backup.project_tasks,       'tasks')
-      await insertBatch('task_assignments',    backup.task_assignments,    'task assignments')
-      await insertBatch('quotes',              backup.quotes,              'quotes')
-      await insertBatch('quote_items',         backup.quote_items,         'quote items')
-      await insertBatch('invoices',            backup.invoices,            'invoices')
+      await insertBatch('clients',               backup.clients,               'clients')
+      await insertBatch('task_definitions',      backup.task_definitions ?? [], 'task definitions')
+      await insertBatch('projects',              backup.projects,              'jobs')
+      await insertBatch('project_contacts',      backup.project_contacts,      'project contacts')
+      await insertBatch('project_staff_rates',   backup.project_staff_rates,   'project staff rates')
+      await insertBatch('project_tasks',         backup.project_tasks,         'tasks')
+      await insertBatch('task_assignments',      backup.task_assignments,      'task assignments')
+      await insertBatch('task_items',            backup.task_items ?? [],      'task items')
+      await insertBatch('task_item_assignments', backup.task_item_assignments ?? [], 'task item assignments')
+      await insertBatch('quotes',                backup.quotes,                'quotes')
+      await insertBatch('quote_items',           backup.quote_items,           'quote items')
+      await insertBatch('invoices',              backup.invoices,              'invoices')
 
       // Insert time_entries first with invoice_item_id nulled (circular ref)
       setDetail('Restoring time entries…')
@@ -191,8 +210,9 @@ export function RestoreBackupButton() {
         }
       }
 
-      await insertBatch('purchase_orders', backup.purchase_orders ?? [], 'purchase orders')
-      await insertBatch('documents',       backup.documents       ?? [], 'documents')
+      await insertBatch('purchase_orders',      backup.purchase_orders      ?? [], 'purchase orders')
+      await insertBatch('purchase_order_tasks', backup.purchase_order_tasks ?? [], 'purchase order task links')
+      await insertBatch('documents',            backup.documents            ?? [], 'documents')
 
       setStatus('done')
       setOpen(false)

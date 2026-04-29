@@ -31,6 +31,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local reference/archive material (backups, client data, docs)
+/reference
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

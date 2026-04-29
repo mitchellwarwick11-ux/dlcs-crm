@@ -11,17 +11,18 @@ export interface SignatureCanvasHandle {
 interface Props {
   className?: string
   onDraw?: () => void
+  initialDataUrl?: string | null
 }
 
 export const SignatureCanvas = forwardRef<SignatureCanvasHandle, Props>(
-  function SignatureCanvas({ className = '', onDraw }, ref) {
+  function SignatureCanvas({ className = '', onDraw, initialDataUrl }, ref) {
     const canvasRef  = useRef<HTMLCanvasElement>(null)
     const drawing    = useRef(false)
     const lastPos    = useRef({ x: 0, y: 0 })
     const hasStrokes = useRef(false)
     const [ready, setReady] = useState(false)
 
-    // Initialise canvas size + context settings
+    // Initialise canvas size + context settings, then paint any saved signature.
     useEffect(() => {
       const canvas = canvasRef.current
       if (!canvas) return
@@ -38,8 +39,20 @@ export const SignatureCanvas = forwardRef<SignatureCanvasHandle, Props>(
       ctx.lineWidth   = 2.5
       ctx.lineCap     = 'round'
       ctx.lineJoin    = 'round'
-      setReady(true)
-    }, [])
+
+      if (initialDataUrl) {
+        const img = new Image()
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, rect.width, rect.height)
+          hasStrokes.current = true
+          setReady(true)
+        }
+        img.onerror = () => setReady(true)
+        img.src = initialDataUrl
+      } else {
+        setReady(true)
+      }
+    }, [initialDataUrl])
 
     function getPos(e: { clientX: number; clientY: number }) {
       const canvas = canvasRef.current!

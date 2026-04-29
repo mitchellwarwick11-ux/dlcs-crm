@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Plus, Search, Building2, User } from 'lucide-react'
+import { ClientDeleteAction } from '@/components/clients/client-delete-action'
 
 export default async function ClientsPage({
   searchParams,
@@ -21,7 +22,7 @@ export default async function ClientsPage({
 
   let query = (supabase as any)
     .from('clients')
-    .select('id, name, company_name, email, phone, suburb, is_active, projects!projects_client_id_fkey(id, status)')
+    .select('id, name, company_name, email, phone, suburb, is_active, projects!projects_client_id_fkey(id, status), quotes(id)')
     .order('name')
 
   if (!showInactive) {
@@ -93,11 +94,14 @@ export default async function ClientsPage({
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Contact</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Suburb</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Active Jobs</th>
+                  <th className="w-10 px-2 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {clients.map((client: any) => {
-                  const activeJobs = (client.projects ?? []).filter((p: any) => p.status === 'active').length
+                  const activeJobs   = (client.projects ?? []).filter((p: any) => p.status === 'active').length
+                  const projectCount = (client.projects ?? []).length
+                  const quoteCount   = (client.quotes ?? []).length
                   return (
                     <tr key={client.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3">
@@ -131,6 +135,15 @@ export default async function ClientsPage({
                           ? <span className="font-medium text-green-600">{activeJobs}</span>
                           : <span className="text-slate-300">—</span>
                         }
+                      </td>
+                      <td className="px-2 py-3 text-right">
+                        <ClientDeleteAction
+                          clientId={client.id}
+                          displayName={client.company_name ?? client.name}
+                          projectCount={projectCount}
+                          quoteCount={quoteCount}
+                          isActive={client.is_active}
+                        />
                       </td>
                     </tr>
                   )

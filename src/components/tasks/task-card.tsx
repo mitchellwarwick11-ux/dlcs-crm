@@ -4,16 +4,26 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { TASK_STATUSES, TASK_STATUS_COLOURS, TASK_STATUS_CYCLE, FEE_TYPES } from '@/lib/constants/statuses'
+import { FEE_TYPES } from '@/lib/constants/statuses'
 import { formatCurrency } from '@/lib/utils/formatters'
 import { Button } from '@/components/ui/button'
-import { Pencil, ChevronRight } from 'lucide-react'
+import { Pencil, CalendarPlus, Receipt } from 'lucide-react'
+import { InvoiceStatusBadge } from '@/components/invoices/invoice-status-badge'
 import { cn } from '@/lib/utils'
 import type { TaskStatus } from '@/lib/constants/statuses'
+import { TaskStatusDropdown } from './task-status-dropdown'
+import type { InvoiceStatus } from '@/types/database'
 
 interface AssignedStaff {
   id: string
   full_name: string
+}
+
+interface InvoiceLink {
+  id: string
+  invoice_number: string
+  status: string
+  amount: number
 }
 
 interface TaskCardProps {
@@ -25,41 +35,49 @@ interface TaskCardProps {
     fee_type: string
     quoted_amount: number | null
     due_date: string | null
+    approval_approved_by?: string | null
+    approval_method?: 'email' | 'phone' | null
+    approval_date?: string | null
+    approval_prepared_by_profile?: { full_name: string } | { full_name: string }[] | null
+    quote?: {
+      quote_number: string
+      contact_name: string | null
+      approved_at: string | null
+      created_by_profile?: { full_name: string } | { full_name: string }[] | null
+    } | { quote_number: string; contact_name: string | null; approved_at: string | null; created_by_profile?: { full_name: string } | { full_name: string }[] | null }[] | null
   }
   assignedStaff: AssignedStaff[]
   workDone: number      // sum of hours × rate (from time_entries)
   invoiced: number      // sum of invoice_items (from sent/paid invoices)
+  invoices: InvoiceLink[]
   jobNumber: string
+  onSchedule?: (taskId: string) => void
 }
 
-export function TaskCard({ task, assignedStaff, workDone, invoiced, jobNumber }: TaskCardProps) {
+export function TaskCard({ task, assignedStaff, workDone, invoiced, invoices, jobNumber, onSchedule }: TaskCardProps) {
   const router = useRouter()
   const [status, setStatus] = useState(task.status)
-  const [cycling, setCycling] = useState(false)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
 
-  async function cycleStatus() {
-    const cycleList = TASK_STATUS_CYCLE
-    const currentIdx = cycleList.indexOf(status as TaskStatus)
-    const nextStatus = currentIdx === -1 || currentIdx === cycleList.length - 1
-      ? cycleList[0]
-      : cycleList[currentIdx + 1]
-
-    setCycling(true)
+  async function changeStatus(nextStatus: TaskStatus) {
+    if (nextStatus === status) return
+    const previous = status
+    setStatus(nextStatus)
+    setUpdatingStatus(true)
     const supabase = createClient()
     const { error } = await (supabase as any)
       .from('project_tasks')
       .update({ status: nextStatus })
       .eq('id', task.id)
+    setUpdatingStatus(false)
 
-    if (!error) {
-      setStatus(nextStatus)
+    if (error) {
+      setStatus(previous)
+    } else {
       router.refresh()
     }
-    setCycling(false)
   }
 
-  const statusLabel = TASK_STATUSES[status as TaskStatus] ?? status
-  const statusColour = TASK_STATUS_COLOURS[status] ?? 'bg-slate-100 text-slate-600'
   const feeLabel = FEE_TYPES[task.fee_type as keyof typeof FEE_TYPES] ?? task.fee_type
 
   // Financial calculations
@@ -81,22 +99,27 @@ export function TaskCard({ task, assignedStaff, workDone, invoiced, jobNumber }:
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* Status cycle button */}
-          <button
-            onClick={cycleStatus}
-            disabled={cycling || status === 'cancelled'}
-            title="Click to advance status"
-            className={cn(
-              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-opacity',
-              statusColour,
-              status !== 'cancelled' && 'cursor-pointer hover:opacity-80',
-              cycling && 'opacity-50'
-            )}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-current" />
-            {statusLabel}
-            {status !== 'cancelled' && <ChevronRight className="h-3 w-3" />}
-          </button>
+          {/* Status dropdown */}
+          <TaskStatusDropdown
+            status={status}
+            onChange={changeStatus}
+            disabled={updatingStatus}
+            size="md"
+          />
+
+          {/* Schedule field work */}
+          {onSchedule && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              onClick={() => onSchedule(task.id)}
+              title="Schedule field work"
+              aria-label="Schedule field work"
+            >
+              <CalendarPlus className="h-3.5 w-3.5" />
+            </Button>
+          )}
 
           {/* Edit */}
           <Link href={`/projects/${jobNumber}/tasks/${task.id}/edit`}>
@@ -188,6 +211,79 @@ export function TaskCard({ task, assignedStaff, workDone, invoiced, jobNumber }:
           </div>
         )}
       </div>
+
+      {/* Invoices that have claimed against this task */}
+      {invoices.length > 0 && (
+        <div className="pt-2 border-t border-slate-100 space-y-1">
+          <p className="uppercase tracking-widest text-[10px] font-semibold text-slate-400 mb-1.5">Invoices</p>
+          <div className="space-y-1">
+            {invoices.map(inv => (
+              <Link
+                key={inv.id}
+                href={`/projects/${jobNumber}/invoices/${inv.id}`}
+                className="flex items-center justify-between gap-2 text-xs hover:bg-slate-50 -mx-1 px-1 py-0.5 rounded transition-colors"
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <Receipt className="h-3 w-3 text-slate-400 shrink-0" />
+                  <span className="font-mono text-slate-700 truncate">{inv.invoice_number}</span>
+                  <InvoiceStatusBadge status={inv.status as InvoiceStatus} />
+                </span>
+                <span className="tabular-nums text-slate-600 shrink-0">{formatCurrency(inv.amount)}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Approval / quote acceptance reference */}
+      {(() => {
+        const prep = Array.isArray(task.approval_prepared_by_profile)
+          ? task.approval_prepared_by_profile[0]
+          : task.approval_prepared_by_profile
+        const quote = Array.isArray(task.quote) ? task.quote[0] : task.quote
+        const quotePrep = quote
+          ? (Array.isArray(quote.created_by_profile) ? quote.created_by_profile[0] : quote.created_by_profile)
+          : null
+
+        const hasManualApproval = prep || task.approval_approved_by || task.approval_method || task.approval_date
+        const hasQuote = !!quote
+        if (!hasManualApproval && !hasQuote) return null
+
+        const dateStr = task.approval_date
+          ? new Date(task.approval_date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+          : null
+        const quoteDateStr = quote?.approved_at
+          ? new Date(quote.approved_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+          : null
+
+        return (
+          <div className="pt-2 border-t border-slate-100 text-xs text-slate-500 space-y-0.5">
+            <p className="uppercase tracking-widest text-[10px] font-semibold text-slate-400">Approval</p>
+
+            {hasQuote && quote && (
+              <>
+                <p>From Quote <span className="text-slate-700 font-medium">{quote.quote_number}</span></p>
+                {quotePrep?.full_name && <p>Prepared by <span className="text-slate-700 font-medium">{quotePrep.full_name}</span></p>}
+                {quote.contact_name && <p>Approved by <span className="text-slate-700 font-medium">{quote.contact_name}</span></p>}
+                {quoteDateStr && <p>Accepted on <span className="text-slate-700 font-medium">{quoteDateStr}</span></p>}
+              </>
+            )}
+
+            {hasManualApproval && (
+              <>
+                {prep?.full_name && <p>Prepared by <span className="text-slate-700 font-medium">{prep.full_name}</span></p>}
+                {task.approval_approved_by && <p>Approved by <span className="text-slate-700 font-medium">{task.approval_approved_by}</span></p>}
+                {(task.approval_method || dateStr) && (
+                  <p>
+                    Via <span className="capitalize text-slate-700 font-medium">{task.approval_method ?? '—'}</span>
+                    {dateStr ? <> on <span className="text-slate-700 font-medium">{dateStr}</span></> : null}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Assigned staff */}
       {assignedStaff.length > 0 && (

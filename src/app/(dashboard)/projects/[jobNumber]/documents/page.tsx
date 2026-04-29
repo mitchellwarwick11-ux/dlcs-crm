@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent } from '@/components/ui/card'
-import { FileText, Download } from 'lucide-react'
+import { FileText, Download, Camera } from 'lucide-react'
 
 function formatBytes(bytes: number | null) {
   if (!bytes) return ''
@@ -45,6 +45,18 @@ export default async function DocumentsPage({
 
   const docList = (docs ?? []) as any[]
 
+  const { data: sitePhotos } = await db
+    .from('field_photos')
+    .select('id, field_schedule_entries ( date )')
+    .eq('project_id', (project as any).id)
+    .eq('type', 'site_photo')
+
+  const sitePhotoList = (sitePhotos ?? []) as any[]
+  const sitePhotoCount = sitePhotoList.length
+  const sitePhotoVisitCount = new Set(
+    sitePhotoList.map((p) => p.field_schedule_entries?.date).filter(Boolean)
+  ).size
+
   // Generate signed URLs (1 hour expiry)
   const docsWithUrls = await Promise.all(
     docList.map(async (doc: any) => {
@@ -68,6 +80,34 @@ export default async function DocumentsPage({
           )}
         </h2>
       </div>
+
+      {sitePhotoCount > 0 && (
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-9 w-9 shrink-0 rounded-md bg-amber-50 flex items-center justify-center">
+                <Camera className="h-4 w-4 text-amber-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-800">Site Photos</p>
+                <p className="text-xs text-slate-500">
+                  {sitePhotoCount} photo{sitePhotoCount !== 1 ? 's' : ''}
+                  {sitePhotoVisitCount > 0 && (
+                    <> across {sitePhotoVisitCount} site visit{sitePhotoVisitCount !== 1 ? 's' : ''}</>
+                  )}
+                </p>
+              </div>
+            </div>
+            <a
+              href={`/api/projects/${jobNumber}/site-photos.zip`}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 px-3 py-1.5 border border-blue-200 rounded-md whitespace-nowrap"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Download all as ZIP
+            </a>
+          </CardContent>
+        </Card>
+      )}
 
       {docsWithUrls.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-lg border border-slate-200">

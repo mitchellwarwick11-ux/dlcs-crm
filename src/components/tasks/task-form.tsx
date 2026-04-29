@@ -24,10 +24,28 @@ const taskSchema = z.object({
   due_date: z.string().nullable().optional(),
   status: z.enum(['not_started', 'in_progress', 'on_hold', 'completed', 'cancelled']).optional(),
   staff_ids: z.array(z.string()),
-}).refine(data => {
-  if (data.fee_type === 'fixed' && !data.quoted_amount) return false
-  return true
-}, { message: 'Quoted amount is required for Fixed Fee tasks', path: ['quoted_amount'] })
+  approval_prepared_by: z.string().nullable().optional(),
+  approval_approved_by: z.string().nullable().optional(),
+  approval_method: z.enum(['email', 'phone']).nullable().optional(),
+  approval_date: z.string().nullable().optional(),
+}).superRefine((data, ctx) => {
+  if (data.fee_type !== 'fixed') return
+  if (!data.quoted_amount) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['quoted_amount'], message: 'Quoted amount is required for Fixed Fee tasks' })
+  }
+  if (!data.approval_prepared_by) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['approval_prepared_by'], message: 'Required' })
+  }
+  if (!data.approval_approved_by || !data.approval_approved_by.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['approval_approved_by'], message: 'Required' })
+  }
+  if (!data.approval_method) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['approval_method'], message: 'Select one' })
+  }
+  if (!data.approval_date) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['approval_date'], message: 'Required' })
+  }
+})
 
 type TaskFormValues = z.infer<typeof taskSchema>
 
@@ -64,9 +82,21 @@ export function TaskForm({
       due_date: null,
       status: 'not_started',
       staff_ids: initialStaffIds,
+      approval_prepared_by: null,
+      approval_approved_by: '',
+      approval_method: null,
+      approval_date: null,
       ...initialValues,
     },
   })
+
+  const [approvalMethod, setApprovalMethod] = useState<'email' | 'phone' | null>(
+    (initialValues?.approval_method as 'email' | 'phone' | null | undefined) ?? null
+  )
+  function selectApprovalMethod(m: 'email' | 'phone') {
+    setApprovalMethod(m)
+    setValue('approval_method', m)
+  }
 
   const BILLING_DESCRIPTIONS: Record<FeeType, string> = {
     fixed:        'Fixed Fee — an agreed price regardless of hours spent.',
@@ -118,12 +148,18 @@ export function TaskForm({
     const supabase = createClient()
     const db = supabase as any
 
+    // Approval fields are stored regardless of fee type so hourly tasks can also
+    // record their quote acceptance. Validation only requires them for Fixed Fee.
     const payload = {
       title: values.title.trim(),
       description: values.description?.trim() || null,
       fee_type: values.fee_type,
       quoted_amount: values.quoted_amount ?? null,
       due_date: values.due_date || null,
+      approval_prepared_by: values.approval_prepared_by || null,
+      approval_approved_by: values.approval_approved_by?.trim() || null,
+      approval_method: values.approval_method ?? null,
+      approval_date: values.approval_date || null,
       ...(mode === 'edit' && values.status ? { status: values.status } : {}),
     }
 
@@ -242,6 +278,80 @@ export function TaskForm({
               </p>
             </div>
           )}
+
+          <div className="pt-4 mt-2 border-t border-slate-200 space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900">Approval Reference</h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {feeType === 'fixed'
+                    ? 'How this fixed fee was quoted and approved (e.g. phone call or email with the client).'
+                    : 'Optional — record the quote acceptance backing this work (e.g. phone call or email with the client).'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="approval_prepared_by">
+                    Quote prepared by {feeType === 'fixed' && <span className="text-red-500">*</span>}
+                  </Label>
+                  <select
+                    id="approval_prepared_by"
+                    {...register('approval_prepared_by')}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Select staff…</option>
+                    {staff.map(s => (
+                      <option key={s.id} value={s.id}>{s.full_name}</option>
+                    ))}
+                  </select>
+                  {errors.approval_prepared_by && <p className="text-xs text-red-500">{errors.approval_prepared_by.message}</p>}
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="approval_approved_by">
+                    Approved by {feeType === 'fixed' && <span className="text-red-500">*</span>}
+                  </Label>
+                  <Input
+                    id="approval_approved_by"
+                    {...register('approval_approved_by')}
+                    placeholder="Client name"
+                  />
+                  {errors.approval_approved_by && <p className="text-xs text-red-500">{errors.approval_approved_by.message}</p>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Quoted via {feeType === 'fixed' && <span className="text-red-500">*</span>}</Label>
+                  <div className="flex gap-2">
+                    {(['email', 'phone'] as const).map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => selectApprovalMethod(m)}
+                        className={cn(
+                          'flex-1 px-4 py-2 rounded-lg border-2 text-sm font-medium capitalize transition-colors',
+                          approvalMethod === m
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                        )}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                  {errors.approval_method && <p className="text-xs text-red-500">{errors.approval_method.message}</p>}
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="approval_date">
+                    Date of {approvalMethod ?? 'email/phone call'} {feeType === 'fixed' && <span className="text-red-500">*</span>}
+                  </Label>
+                  <Input id="approval_date" type="date" {...register('approval_date')} />
+                  {errors.approval_date && <p className="text-xs text-red-500">{errors.approval_date.message}</p>}
+                </div>
+              </div>
+            </div>
         </CardContent>
       </Card>
 

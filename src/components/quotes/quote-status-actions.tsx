@@ -54,25 +54,50 @@ export function QuoteStatusActions({ quoteId, status, hasLinkedJob, projectId }:
       return
     }
 
-    // When accepting with a linked job: create one task per line item
+    // When accepting with a linked job: create one project task per quote task.
+    // Fee proposals store the breakdown in quotes.selected_quote_tasks (jsonb);
+    // legacy/simple quotes store it as quote_items rows. Prefer the former.
     if (next === 'accepted' && projectId) {
-      const { data: lineItems } = await db
-        .from('quote_items')
-        .select('description, amount')
-        .eq('quote_id', quoteId)
-        .order('sort_order')
+      const { data: quote } = await db
+        .from('quotes')
+        .select('selected_quote_tasks')
+        .eq('id', quoteId)
+        .single()
 
-      if (lineItems && lineItems.length > 0) {
-        await db.from('project_tasks').insert(
-          lineItems.map((item: any, idx: number) => ({
+      const quoteTasks = Array.isArray(quote?.selected_quote_tasks) ? quote.selected_quote_tasks : []
+
+      let rows: any[] = []
+      if (quoteTasks.length > 0) {
+        rows = quoteTasks
+          .filter((t: any) => (t?.title ?? '').trim().length > 0)
+          .map((t: any, idx: number) => ({
             project_id:    projectId,
-            title:         item.description,
+            quote_id:      quoteId,
+            title:         t.title,
             fee_type:      'fixed',
-            quoted_amount: item.amount,
+            quoted_amount: t.price ?? 0,
             status:        'not_started',
             sort_order:    idx,
           }))
-        )
+      } else {
+        const { data: lineItems } = await db
+          .from('quote_items')
+          .select('description, amount')
+          .eq('quote_id', quoteId)
+          .order('sort_order')
+        rows = (lineItems ?? []).map((item: any, idx: number) => ({
+          project_id:    projectId,
+          quote_id:      quoteId,
+          title:         item.description,
+          fee_type:      'fixed',
+          quoted_amount: item.amount,
+          status:        'not_started',
+          sort_order:    idx,
+        }))
+      }
+
+      if (rows.length > 0) {
+        await db.from('project_tasks').insert(rows)
       }
     }
 

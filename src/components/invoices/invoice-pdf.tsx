@@ -23,7 +23,12 @@ const styles = StyleSheet.create({
   label: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 3 },
   billName: { fontSize: 10, fontFamily: 'Helvetica-Bold' },
   billDetail: { fontSize: 9, color: '#475569', marginTop: 1 },
-  sectionTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6, marginTop: 14, borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0', paddingBottom: 3 },
+  sectionTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6, marginTop: 14, borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0', paddingBottom: 3 },
+  sectionTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase' },
+  sectionQuoteRef: { fontSize: 8.5, color: '#94a3b8' },
+  variationTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 10, marginBottom: 4, paddingBottom: 2, borderBottomWidth: 0.5, borderBottomColor: '#fcd34d' },
+  variationTitle: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#92400e', letterSpacing: 0.5, textTransform: 'uppercase' },
+  variationQuoteRef: { fontSize: 8, color: '#92400e' },
   // Fixed fee breakdown — vertical layout
   claimBadge:        { alignSelf: 'flex-start', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 3, marginBottom: 8 },
   claimBadgeText:    { fontSize: 8, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -40,11 +45,27 @@ const styles = StyleSheet.create({
   tableRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: '#f1f5f9', paddingVertical: 3 },
   tableCell: { fontSize: 9, color: '#334155' },
   colDate:   { width: 55 },
-  colStaff:  { width: 90 },
+  colStaff:  { width: 110 },
   colDesc:   { flex: 1, paddingRight: 8 },
   colHours:  { width: 40, textAlign: 'right' },
   colRate:   { width: 52, textAlign: 'right' },
   colAmt:    { width: 60, textAlign: 'right', fontFamily: 'Helvetica-Bold' },
+  // Role-grouped layout
+  roleGroupRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: '#cbd5e1', paddingVertical: 4, marginTop: 4 },
+  roleGroupLabel: { flex: 1, fontSize: 10, fontFamily: 'Helvetica-Oblique', color: '#1e293b' },
+  roleGroupHours: { width: 50, fontSize: 10, color: '#334155', textAlign: 'right' },
+  roleGroupRate:  { width: 70, fontSize: 10, color: '#334155', textAlign: 'right' },
+  roleGroupAmt:   { width: 75, fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#1e293b', textAlign: 'right' },
+  detailRow: { flexDirection: 'row', paddingVertical: 2, paddingLeft: 12 },
+  detailDate: { width: 60, fontSize: 9, color: '#64748b' },
+  detailDesc: { flex: 1, fontSize: 9, color: '#475569', paddingRight: 8 },
+  detailHrs:  { width: 50, fontSize: 9, color: '#64748b', textAlign: 'right' },
+  detailRateSpacer: { width: 70 },
+  detailAmtSpacer:  { width: 75 },
+  // Adjustment row (rounding etc) — full-width label + amount under role groups
+  adjustmentRow:    { flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: '#cbd5e1', paddingVertical: 4, marginTop: 4 },
+  adjustmentLabel:  { flex: 1, fontSize: 10, fontFamily: 'Helvetica-Oblique', color: '#475569' },
+  adjustmentAmt:    { width: 75, fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#1e293b', textAlign: 'right' },
   // Totals
   totalsBlock: { marginTop: 20, alignItems: 'flex-end' },
   totalsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 2 },
@@ -77,19 +98,113 @@ export interface TaskSection {
   taskTitle: string
   feeType: 'fixed' | 'hourly'
   claimLabel?: 'Progress Claim' | 'Final Claim'
+  quoteNumber?: string | null
+  pos?: { po_number: string; amount: number | null }[]
   // Fixed fee
   quotedAmount?: number
   prevClaimed?: number
   thisClaim?: number
   // Hourly
-  entries?: {
-    date: string
-    staffName: string
+  entries?: HourlyEntry[]
+  // Variation-to-fixed-fee entries — only present on fixed-fee sections; rendered as an hourly table below the breakdown.
+  variationEntries?: HourlyEntry[]
+  // Section-level adjustment line items (e.g. rounding) — no time entry, displayed below the role groups.
+  adjustments?: {
     description: string
-    hours: number
-    rate: number
     amount: number
   }[]
+}
+
+export interface HourlyEntry {
+  date: string
+  roleLabel: string
+  description: string
+  hours: number
+  rate: number
+  amount: number
+}
+
+interface HourlyTableProps {
+  entries: HourlyEntry[]
+  layout: 'role_grouped' | 'per_line'
+  showEntryDetails: boolean
+  adjustments?: { description: string; amount: number }[]
+}
+
+function HourlyTable({ entries, layout, showEntryDetails, adjustments }: HourlyTableProps) {
+  if (entries.length === 0) return null
+  if (layout === 'per_line') {
+    return (
+      <View>
+        <View style={styles.tableHeader}>
+          <Text style={[styles.tableHeaderCell, styles.colDate]}>Date</Text>
+          <Text style={[styles.tableHeaderCell, styles.colStaff]}>Role</Text>
+          <Text style={[styles.tableHeaderCell, styles.colDesc]}>Description</Text>
+          <Text style={[styles.tableHeaderCell, styles.colHours]}>Hrs</Text>
+          <Text style={[styles.tableHeaderCell, styles.colRate]}>Rate</Text>
+          <Text style={[styles.tableHeaderCell, styles.colAmt]}>Amount</Text>
+        </View>
+        {entries.map((entry, i) => (
+          <View key={i} style={styles.tableRow}>
+            <Text style={[styles.tableCell, styles.colDate]}>{fmtDate(entry.date)}</Text>
+            <Text style={[styles.tableCell, styles.colStaff]}>{entry.roleLabel}</Text>
+            <Text style={[styles.tableCell, styles.colDesc]}>{entry.description}</Text>
+            <Text style={[styles.tableCell, styles.colHours]}>{entry.hours.toFixed(2)}</Text>
+            <Text style={[styles.tableCell, styles.colRate]}>{fmt(entry.rate)}/h</Text>
+            <Text style={[styles.tableCell, styles.colAmt]}>{fmt(entry.amount)}</Text>
+          </View>
+        ))}
+        {(adjustments ?? []).map((adj, i) => (
+          <View key={`adj-${i}`} style={styles.tableRow}>
+            <Text style={[styles.tableCell, { flex: 1, fontFamily: 'Helvetica-Oblique', color: '#475569' }]}>{adj.description}</Text>
+            <Text style={[styles.tableCell, styles.colAmt]}>{fmt(adj.amount)}</Text>
+          </View>
+        ))}
+      </View>
+    )
+  }
+  // role_grouped
+  type Group = { roleLabel: string; hours: number; amount: number; entries: HourlyEntry[] }
+  const groups = new Map<string, Group>()
+  for (const e of entries) {
+    const g = groups.get(e.roleLabel) ?? { roleLabel: e.roleLabel, hours: 0, amount: 0, entries: [] }
+    g.hours += e.hours
+    g.amount += e.amount
+    g.entries.push(e)
+    groups.set(e.roleLabel, g)
+  }
+  return (
+    <View>
+      {Array.from(groups.values()).map((g, gi) => {
+        const effRate = g.hours > 0 ? g.amount / g.hours : 0
+        return (
+          <View key={gi}>
+            <View style={styles.roleGroupRow}>
+              <Text style={styles.roleGroupLabel}>{g.roleLabel}</Text>
+              <Text style={styles.roleGroupHours}>{g.hours.toFixed(2)}</Text>
+              <Text style={styles.roleGroupRate}>{fmt(effRate)}/h</Text>
+              <Text style={styles.roleGroupAmt}>{fmt(g.amount)}</Text>
+            </View>
+            {showEntryDetails && g.entries.map((entry, i) => (
+              <View key={i} style={styles.detailRow}>
+                <Text style={styles.detailDate}>{fmtDate(entry.date)}</Text>
+                <Text style={styles.detailDesc}>{entry.description}</Text>
+                <Text style={styles.detailHrs}>{entry.hours.toFixed(2)}</Text>
+                <Text style={styles.detailRateSpacer}> </Text>
+                <Text style={styles.detailAmtSpacer}> </Text>
+              </View>
+            ))}
+          </View>
+        )
+      })}
+      {(adjustments ?? []).map((adj, i) => (
+        <View key={`adj-${i}`} style={styles.adjustmentRow}>
+          <Text style={styles.adjustmentLabel}>{adj.description}</Text>
+          <Text style={styles.adjustmentAmt}>{fmt(adj.amount)}</Text>
+        </View>
+      ))}
+    </View>
+  )
 }
 
 export interface InvoicePDFProps {
@@ -105,6 +220,8 @@ export interface InvoicePDFProps {
   projectTitle: string
   clientName: string | null
   taskSections: TaskSection[]
+  invoiceLayout: 'role_grouped' | 'per_line'
+  showEntryDetails: boolean
   companyName: string
   abn: string
   bankName: string
@@ -117,6 +234,7 @@ export function InvoicePDFDocument(props: InvoicePDFProps) {
   const {
     invoiceNumber, createdAt, dueDate, subtotal, gstAmount, total,
     notes, contactName, contactEmail, projectTitle, clientName, taskSections,
+    invoiceLayout, showEntryDetails,
     companyName, abn, bankName, bsb, accountNumber, accountName,
   } = props
 
@@ -167,7 +285,17 @@ export function InvoicePDFDocument(props: InvoicePDFProps) {
         {/* Task sections */}
         {taskSections.map((section) => (
           <View key={section.taskId}>
-            <Text style={styles.sectionTitle}>{section.taskTitle}</Text>
+            <View style={styles.sectionTitleRow}>
+              <Text style={styles.sectionTitle}>{section.taskTitle}</Text>
+              {section.quoteNumber && (
+                <Text style={styles.sectionQuoteRef}>Quote #: {section.quoteNumber}</Text>
+              )}
+            </View>
+            {section.pos && section.pos.length > 0 && (
+              <Text style={styles.sectionQuoteRef}>
+                PO: {section.pos.map(p => p.po_number).join(', ')}
+              </Text>
+            )}
 
             {section.feeType === 'fixed' && (() => {
               const remaining = Math.max(0,
@@ -213,25 +341,27 @@ export function InvoicePDFDocument(props: InvoicePDFProps) {
             })()}
 
             {section.feeType === 'hourly' && section.entries && section.entries.length > 0 && (
+              <HourlyTable
+                entries={section.entries}
+                layout={invoiceLayout}
+                showEntryDetails={showEntryDetails}
+                adjustments={section.adjustments}
+              />
+            )}
+
+            {section.feeType === 'fixed' && section.variationEntries && section.variationEntries.length > 0 && (
               <View>
-                <View style={styles.tableHeader}>
-                  <Text style={[styles.tableHeaderCell, styles.colDate]}>Date</Text>
-                  <Text style={[styles.tableHeaderCell, styles.colStaff]}>Staff</Text>
-                  <Text style={[styles.tableHeaderCell, styles.colDesc]}>Description</Text>
-                  <Text style={[styles.tableHeaderCell, styles.colHours]}>Hrs</Text>
-                  <Text style={[styles.tableHeaderCell, styles.colRate]}>Rate</Text>
-                  <Text style={[styles.tableHeaderCell, styles.colAmt]}>Amount</Text>
+                <View style={styles.variationTitleRow}>
+                  <Text style={styles.variationTitle}>Variations to Fixed Fee</Text>
+                  {section.quoteNumber && (
+                    <Text style={styles.variationQuoteRef}>Quote #: {section.quoteNumber}</Text>
+                  )}
                 </View>
-                {section.entries.map((entry, i) => (
-                  <View key={i} style={styles.tableRow}>
-                    <Text style={[styles.tableCell, styles.colDate]}>{fmtDate(entry.date)}</Text>
-                    <Text style={[styles.tableCell, styles.colStaff]}>{entry.staffName}</Text>
-                    <Text style={[styles.tableCell, styles.colDesc]}>{entry.description}</Text>
-                    <Text style={[styles.tableCell, styles.colHours]}>{entry.hours.toFixed(2)}</Text>
-                    <Text style={[styles.tableCell, styles.colRate]}>{fmt(entry.rate)}/h</Text>
-                    <Text style={[styles.tableCell, styles.colAmt]}>{fmt(entry.amount)}</Text>
-                  </View>
-                ))}
+                <HourlyTable
+                  entries={section.variationEntries}
+                  layout={invoiceLayout}
+                  showEntryDetails={showEntryDetails}
+                />
               </View>
             )}
           </View>

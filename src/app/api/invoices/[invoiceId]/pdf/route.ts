@@ -4,6 +4,7 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { createClient } from '@/lib/supabase/server'
 import { InvoicePDFDocument } from '@/components/invoices/invoice-pdf'
 import type { TaskSection } from '@/components/invoices/invoice-pdf'
+import { fetchTaskPosForInvoice } from '@/lib/utils/invoice-pos'
 
 export const runtime = 'nodejs'
 
@@ -26,7 +27,7 @@ export async function POST(
     .select(`
       invoice_number, created_at, due_date,
       subtotal, gst_amount, total, notes,
-      projects ( id, title, clients ( name, company_name ) ),
+      projects ( id, title, invoice_layout, invoice_show_entry_details, clients ( name, company_name ) ),
       quotes ( contact_name, contact_email )
     `)
     .eq('id', invoiceId)
@@ -41,14 +42,28 @@ export async function POST(
     .from('invoice_items')
     .select(`
       id, description, quantity, unit_price, amount,
-      task_id, time_entry_id, prev_claimed_amount, sort_order,
-      project_tasks ( title, fee_type, quoted_amount ),
-      time_entries ( date, hours, rate_at_time, staff_profiles ( full_name ) )
+      task_id, time_entry_id, prev_claimed_amount, sort_order, is_variation,
+      project_tasks ( title, fee_type, quoted_amount, quotes!quote_id ( quote_number ) ),
+      time_entries ( date, hours, rate_at_time, acting_role, staff_profiles!staff_id ( full_name, role ) )
     `)
     .eq('invoice_id', invoiceId)
     .order('sort_order')
 
   const itemList = (items ?? []) as any[]
+
+  // POs that authorise tasks on this invoice
+  const projectIdForPos = inv.projects?.id
+  const invoiceTaskIds  = Array.from(
+    new Set(itemList.map(i => i.task_id).filter((id): id is string => !!id))
+  )
+  const taskPoMap = projectIdForPos
+    ? await fetchTaskPosForInvoice(db, projectIdForPos, invoiceTaskIds)
+    : new Map()
+
+  // Fetch role labels so we can show roles (not staff names) on hourly invoices
+  const { data: roleRows } = await db.from('role_rates').select('role_key, label')
+  const roleLabelMap: Record<string, string> = {}
+  for (const r of (roleRows ?? [])) roleLabelMap[r.role_key] = r.label
 
   // Group items into task sections (preserving order)
   const sectionsMap = new Map<string, TaskSection>()
@@ -60,11 +75,15 @@ export async function POST(
     if (!sectionsMap.has(key)) {
       const quotedAmount = item.project_tasks?.quoted_amount ?? 0
       const prevClaimed  = item.prev_claimed_amount ?? 0
-      const thisClaim    = feeType === 'fixed' ? (item.amount ?? item.unit_price) : 0
+      // For fixed-fee sections, only the non-variation row anchors `thisClaim`.
+      const thisClaim    = feeType === 'fixed' && !item.is_variation ? (item.amount ?? item.unit_price) : 0
       const remaining    = quotedAmount - prevClaimed - thisClaim
       const claimLabel   = feeType === 'fixed'
         ? (remaining <= 0.005 ? 'Final Claim' : 'Progress Claim')
         : undefined
+
+      const taskQuotes = (item.project_tasks as any)?.quotes
+      const quoteNumber = (Array.isArray(taskQuotes) ? taskQuotes[0]?.quote_number : taskQuotes?.quote_number) ?? null
 
       sectionsMap.set(key, {
         taskId: key,
@@ -74,16 +93,47 @@ export async function POST(
         quotedAmount,
         prevClaimed,
         thisClaim,
+        quoteNumber,
+        pos: item.task_id ? (taskPoMap.get(item.task_id) ?? []) : [],
         entries: [],
+        variationEntries: [],
+        adjustments: [],
       })
     }
 
     const section = sectionsMap.get(key)!
-    if (feeType === 'hourly' && item.time_entries) {
+
+    // Late-arriving fixed-fee anchor row (e.g. variation came first in sort_order).
+    if (feeType === 'fixed' && !item.is_variation && (section.thisClaim ?? 0) === 0) {
+      section.thisClaim = item.amount ?? item.unit_price
+      const remaining = (section.quotedAmount ?? 0) - (section.prevClaimed ?? 0) - (section.thisClaim ?? 0)
+      section.claimLabel = remaining <= 0.005 ? 'Final Claim' : 'Progress Claim'
+    }
+
+    if (feeType === 'hourly') {
+      if (item.time_entries) {
+        const te = item.time_entries as any
+        const roleKey = te.acting_role ?? te.staff_profiles?.role ?? ''
+        section.entries!.push({
+          date: te.date,
+          roleLabel: roleLabelMap[roleKey] ?? '—',
+          description: item.description,
+          hours: item.quantity,
+          rate: item.unit_price,
+          amount: item.amount,
+        })
+      } else {
+        section.adjustments!.push({
+          description: item.description,
+          amount: Number(item.amount ?? item.unit_price),
+        })
+      }
+    } else if (feeType === 'fixed' && item.is_variation && item.time_entries) {
       const te = item.time_entries as any
-      section.entries!.push({
+      const roleKey = te.staff_profiles?.role ?? ''
+      section.variationEntries!.push({
         date: te.date,
-        staffName: te.staff_profiles?.full_name ?? '—',
+        roleLabel: roleLabelMap[roleKey] ?? '—',
         description: item.description,
         hours: item.quantity,
         rate: item.unit_price,
@@ -108,6 +158,8 @@ export async function POST(
     projectTitle: inv.projects?.title ?? '',
     clientName: inv.projects?.clients?.company_name ?? inv.projects?.clients?.name ?? null,
     taskSections,
+    invoiceLayout: (inv.projects?.invoice_layout ?? 'role_grouped') as 'role_grouped' | 'per_line',
+    showEntryDetails: !!inv.projects?.invoice_show_entry_details,
     companyName: settings.company_name || 'Delfs Lascelles Consulting Surveyors',
     abn: settings.abn || '',
     bankName: settings.bank_name || '',

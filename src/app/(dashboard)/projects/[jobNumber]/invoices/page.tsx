@@ -41,6 +41,8 @@ export default async function ProjectInvoicingPage({
     { data: projectTasks },
     { data: purchaseOrders },
     { data: projectCosts },
+    { data: staffList },
+    { data: roleOverrides },
   ] = await Promise.all([
     db
       .from('quotes')
@@ -54,7 +56,7 @@ export default async function ProjectInvoicingPage({
       .order('created_at', { ascending: false }),
     db
       .from('time_entries')
-      .select('id, hours, rate_at_time, is_billable, invoice_item_id, task_id, project_tasks ( title )')
+      .select('id, hours, rate_at_time, is_billable, invoice_item_id, task_id, staff_id, acting_role, project_tasks ( title )')
       .eq('project_id', projectId)
       .is('invoice_item_id', null)
       .eq('is_billable', true),
@@ -65,7 +67,7 @@ export default async function ProjectInvoicingPage({
       .not('fee_type', 'eq', 'non_billable'),
     db
       .from('purchase_orders')
-      .select('id, po_number, issued_by, issued_date, amount, notes')
+      .select('id, po_number, issued_by, issued_date, amount, notes, purchase_order_tasks ( task_id )')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false }),
     db
@@ -73,13 +75,28 @@ export default async function ProjectInvoicingPage({
       .select('id, description, amount, has_gst, date, invoice_item_id, invoice_items!invoice_item_id(invoices(invoice_number))')
       .eq('project_id', projectId)
       .order('created_at', { ascending: true }),
+    db
+      .from('staff_profiles')
+      .select('id, role, default_hourly_rate'),
+    db
+      .from('project_role_rates')
+      .select('role_key, hourly_rate')
+      .eq('project_id', projectId),
   ])
 
   const quoteList   = (quotes         ?? []) as any[]
   const invoiceList = (invoices       ?? []) as any[]
   const entryList   = (timeEntries    ?? []) as any[]
   const taskList    = (projectTasks   ?? []) as any[]
-  const poList      = (purchaseOrders ?? []) as any[]
+  const poList      = ((purchaseOrders ?? []) as any[]).map((po: any) => ({
+    id:          po.id,
+    po_number:   po.po_number,
+    issued_by:   po.issued_by,
+    issued_date: po.issued_date,
+    amount:      po.amount,
+    notes:       po.notes,
+    task_ids:    (po.purchase_order_tasks ?? []).map((l: any) => l.task_id),
+  }))
   const costList    = ((projectCosts  ?? []) as any[]).map((c: any) => ({
     ...c,
     invoice_number: c.invoice_items?.invoices?.invoice_number ?? null,
@@ -96,17 +113,34 @@ export default async function ProjectInvoicingPage({
     ])
   )
 
+  // ── Live rate resolution: role override → staff default → rate_at_time (fallback) ──
+  const staffMap = new Map<string, { role: string | null; default_hourly_rate: number }>()
+  for (const s of (staffList ?? []) as any[]) {
+    staffMap.set(s.id, { role: s.role ?? null, default_hourly_rate: Number(s.default_hourly_rate) || 0 })
+  }
+  const roleOverrideMap = new Map<string, number>()
+  for (const o of (roleOverrides ?? []) as any[]) {
+    roleOverrideMap.set(o.role_key, Number(o.hourly_rate))
+  }
+  function liveRate(entry: any): number {
+    const s = entry.staff_id ? staffMap.get(entry.staff_id) : null
+    const role = entry.acting_role ?? s?.role ?? null
+    if (role && roleOverrideMap.has(role)) return roleOverrideMap.get(role)!
+    if (s) return s.default_hourly_rate
+    return Number(entry.rate_at_time) || 0
+  }
+
   // ── WIP: group uninvoiced billable time by task ─────────────────────────
-  const wipMap = new Map<string, { title: string; hours: number; value: number }>()
+  const wipMap = new Map<string, { title: string; feeType: string | null; hours: number; value: number }>()
 
   for (const entry of entryList) {
     const taskId    = entry.task_id ?? '__no_task__'
     const taskMeta  = taskMetaMap.get(taskId)
     const taskTitle = taskMeta?.title ?? entry.project_tasks?.title ?? 'No Task'
-    const value     = entry.hours * entry.rate_at_time
+    const value     = entry.hours * liveRate(entry)
 
     if (!wipMap.has(taskId)) {
-      wipMap.set(taskId, { title: taskTitle, hours: 0, value: 0 })
+      wipMap.set(taskId, { title: taskTitle, feeType: taskMeta?.feeType ?? null, hours: 0, value: 0 })
     }
     const task = wipMap.get(taskId)!
     task.hours += entry.hours
@@ -114,16 +148,7 @@ export default async function ProjectInvoicingPage({
   }
 
   const wipRows = Array.from(wipMap.entries())
-    .map(([taskId, row]) => {
-      const taskMeta = taskMetaMap.get(taskId)
-      if (taskMeta?.feeType === 'fixed') {
-        return {
-          ...row,
-          value: Math.max(row.value - taskMeta.claimedAmount, 0),
-        }
-      }
-      return row
-    })
+    .map(([, row]) => row)
     .filter((row) => row.value > 0)
     .sort((a, b) => b.value - a.value)
 
@@ -238,6 +263,7 @@ export default async function ProjectInvoicingPage({
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Task</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">Billing Type</th>
                     <th className="text-right px-4 py-2.5 text-xs font-medium text-slate-500 uppercase tracking-wide">WIP Value</th>
                   </tr>
                 </thead>
@@ -245,13 +271,16 @@ export default async function ProjectInvoicingPage({
                   {wipRows.map((row, i) => (
                     <tr key={i} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-slate-800">{row.title}</td>
+                      <td className="px-4 py-3 text-slate-500 text-xs">
+                        {row.feeType === 'fixed' ? 'Fixed Fee' : row.feeType === 'hourly' ? 'Hourly Rate' : '—'}
+                      </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-900 tabular-nums">{formatCurrency(row.value)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50">
-                    <td className="px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Total WIP</td>
+                    <td colSpan={2} className="px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Total WIP</td>
                     <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">{formatCurrency(wipTotal)}</td>
                   </tr>
                 </tfoot>
@@ -368,7 +397,11 @@ export default async function ProjectInvoicingPage({
         </div>
         <Card>
           <CardContent className="p-4">
-            <PurchaseOrdersPanel projectId={projectId} initialOrders={poList} />
+            <PurchaseOrdersPanel
+              projectId={projectId}
+              initialOrders={poList}
+              tasks={taskList.map((t: any) => ({ id: t.id, title: t.title }))}
+            />
           </CardContent>
         </Card>
       </section>

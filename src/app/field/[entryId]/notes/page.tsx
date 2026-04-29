@@ -44,36 +44,38 @@ export default async function FieldNotesPage({
   const jobLabel    = entry.projects?.job_number ?? entryId.slice(0, 8)
 
   return (
-    <div className="flex flex-col flex-1">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-4 pt-safe-top">
+    <div className="flex flex-col flex-1 bg-[#F5F4F1]">
+      {/* Header — charcoal */}
+      <div className="bg-[#2F2F33] px-4 pt-safe-top">
         <div className="flex items-center gap-2 py-3">
           <Link
             href={`/field/${entryId}`}
-            className="p-1.5 -ml-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+            className="p-1.5 -ml-1.5 rounded-lg text-[#BDBDC0] hover:bg-[#45454B] transition-colors"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-6 w-6" />
           </Link>
-          <div className="flex items-center gap-2 flex-1">
-            <FileText className="h-5 w-5 text-amber-500 shrink-0" />
-            <div>
-              <p className="text-xs text-slate-500 font-medium">{jobLabel}</p>
-              <h1 className="text-base font-bold text-slate-900">Fieldbook Notes</h1>
-            </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-[#F39200] font-bold tracking-[0.18em]">{jobLabel}</p>
+            <h1 className="text-base font-bold text-white">Fieldbook Notes</h1>
           </div>
           {(existingNotes?.length ?? 0) > 0 && (
-            <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-1 rounded-full">
-              {existingNotes!.length} page{existingNotes!.length === 1 ? '' : 's'}
+            <span className="text-xs bg-[#45454B] text-[#F39200] font-bold px-2.5 py-1 rounded-full">
+              {existingNotes!.length}
             </span>
           )}
         </div>
       </div>
 
-      <div className="px-4 pt-4 pb-2">
-        <p className="text-sm text-slate-500">
-          Photograph each page of your fieldbook clearly. Use good lighting and hold the camera directly above the page.
-          Photos are compressed to ~20% of original size.
-        </p>
+      <div className="px-5 pt-4 pb-2">
+        <div className="flex gap-3 p-3 bg-[#FAF8F3] border border-[#EFEDE6] rounded-xl">
+          <div className="w-[3px] bg-[#F39200] shrink-0 rounded-full" />
+          <div>
+            <p className="text-[10px] font-bold text-[#F39200] tracking-[0.18em] mb-1">TIP</p>
+            <p className="text-[12px] text-[#4B4B4F] leading-relaxed">
+              Hold camera directly above page. Use good lighting. Photos compressed to ~20% of original size.
+            </p>
+          </div>
+        </div>
       </div>
 
       <PhotoUpload

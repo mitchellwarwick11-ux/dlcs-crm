@@ -1,0 +1,3 @@
+# Never commit raw WFM exports -- they contain client data.
+*
+!.gitignore

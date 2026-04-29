@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npx tsc *)",
+      "Bash(node scripts/generate-dummy-data.js)",
+      "Bash(node scripts/load-dummy-data.js)",
+      "Bash(node scripts/backup-data.js)",
+      "Bash(node scripts/load-data.js)",
+      "Bash(node scripts/load-data.js reference/dlcs-backup-2026-04-18T23-31-43.json)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(Object.keys\\(p.scripts\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(npm install *)",
+      "Bash(node -e ' *)",
+      "Bash(pandoc \"design/Qxxxx Fee Proposal \\(set out\\).docx\" -o /tmp/qxxx.md)",
+      "Read(//tmp/**)",
+      "Bash(where pandoc *)",
+      "Bash(where python3 *)",
+      "Bash(mkdir -p /tmp/qxxx_unpack)",
+      "Bash(unzip -o \"/c/Projects/dlcs-crm/design/Qxxxx Fee Proposal \\(set out\\).docx\")",
+      "Bash(mkdir -p /c/temp/qxxx)",
+      "Read(//c/temp/**)",
+      "Bash(xargs -I{} grep -l \"ALTER TABLE.*quotes\\\\|CREATE TABLE.*quotes\" {})",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(grep -E \"\\\\.tsx?$\")"
+    ]
+  }
+}
