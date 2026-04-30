@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
-import { CalendarDays, MapPin, Clock, ChevronRight, Inbox } from 'lucide-react'
+import { MapPin, ChevronRight, Inbox, CheckCircle2, AlertCircle, Circle } from 'lucide-react'
+import { SubmitDayButton } from '@/components/field/submit-day-button'
 
 const STATUS_LABELS: Record<string, string> = {
   must_happen: 'Must Happen',
@@ -72,6 +73,32 @@ export default async function FieldTodayPage() {
       .neq('status', 'cancelled')
       .order('time_of_day', { ascending: true, nullsFirst: false })
     entries = data ?? []
+  }
+
+  // Surveyor's per-entry visit status for today's entries
+  const visitByEntry: Record<string, { saved_at: string | null; submitted_at: string | null; did_not_attend: boolean }> = {}
+  if (entries.length > 0) {
+    const { data: vs } = await db
+      .from('field_staff_visit_status')
+      .select('entry_id, saved_at, submitted_at, did_not_attend')
+      .eq('staff_id', staffProfile.id)
+      .in('entry_id', entries.map((e: any) => e.id))
+    for (const v of (vs ?? [])) {
+      visitByEntry[v.entry_id] = {
+        saved_at:       v.saved_at ?? null,
+        submitted_at:   v.submitted_at ?? null,
+        did_not_attend: !!v.did_not_attend,
+      }
+    }
+  }
+
+  // Count how many of today's jobs are in each state
+  let readyCount     = 0  // saved, not yet submitted (any kind — attended or DNA)
+  let submittedCount = 0
+  for (const e of entries) {
+    const v = visitByEntry[e.id]
+    if (v?.submitted_at) submittedCount++
+    else if (v?.saved_at) readyCount++
   }
 
   // Also check for upcoming entries this week (next 4 days)
@@ -144,8 +171,30 @@ export default async function FieldTodayPage() {
                 const proj   = entry.projects
                 const task   = entry.project_tasks
                 const address = proj ? [proj.site_address, proj.suburb].filter(Boolean).join(', ') : null
-                const statusColour = STATUS_COLOURS[entry.status] ?? STATUS_COLOURS.scheduled
-                const statusLabel  = STATUS_LABELS[entry.status]  ?? entry.status
+                const v = visitByEntry[entry.id]
+
+                // Visit-status badge — overrides the schedule status pill once
+                // the surveyor has Saved / DNA'd / submitted.
+                let badgeLabel: string
+                let badgeColour: string
+                let badgeIcon: React.ReactNode = null
+                if (v?.submitted_at) {
+                  badgeLabel  = 'Submitted'
+                  badgeColour = 'bg-[#E7F3EC] text-[#1F7A3F]'
+                  badgeIcon   = <CheckCircle2 className="h-3 w-3" />
+                } else if (v?.saved_at && v?.did_not_attend) {
+                  badgeLabel  = 'Did not attend'
+                  badgeColour = 'bg-[#FBF1D8] text-[#A86B0C]'
+                  badgeIcon   = <AlertCircle className="h-3 w-3" />
+                } else if (v?.saved_at) {
+                  badgeLabel  = 'Ready to submit'
+                  badgeColour = 'bg-[#E7F3EC] text-[#1F7A3F]'
+                  badgeIcon   = <CheckCircle2 className="h-3 w-3" />
+                } else {
+                  badgeLabel  = STATUS_LABELS[entry.status] ?? 'In progress'
+                  badgeColour = STATUS_COLOURS[entry.status] ?? STATUS_COLOURS.scheduled
+                  badgeIcon   = <Circle className="h-3 w-3" />
+                }
 
                 return (
                   <Link
@@ -155,7 +204,6 @@ export default async function FieldTodayPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0 space-y-2">
-                        {/* Job number + time */}
                         <div className="flex items-center gap-3 flex-wrap">
                           <span className="font-bold text-[#111111] text-[15px]">
                             {proj?.job_number ?? 'No Job #'}
@@ -170,12 +218,10 @@ export default async function FieldTodayPage() {
                           )}
                         </div>
 
-                        {/* Task */}
                         {task && (
                           <p className="text-[15px] font-medium text-[#1F1F22]">{task.title}</p>
                         )}
 
-                        {/* Address */}
                         {address && (
                           <div className="flex items-center gap-1.5">
                             <MapPin className="h-3.5 w-3.5 text-[#9A9A9C] shrink-0" />
@@ -183,10 +229,10 @@ export default async function FieldTodayPage() {
                           </div>
                         )}
 
-                        {/* Status pill + office */}
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${statusColour}`}>
-                            {statusLabel}
+                          <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 ${badgeColour}`}>
+                            {badgeIcon}
+                            {badgeLabel}
                           </span>
                           {entry.office_surveyor && (
                             <span className="text-[11px] text-[#9A9A9C] ml-auto">
@@ -200,6 +246,18 @@ export default async function FieldTodayPage() {
                   </Link>
                 )
               })}
+            </div>
+          )}
+
+          {/* End-of-day submission */}
+          {entries.length > 0 && (
+            <div className="mt-5">
+              <SubmitDayButton
+                date={today}
+                totalToday={entries.length}
+                readyToSubmit={readyCount}
+                alreadyDone={submittedCount}
+              />
             </div>
           )}
         </div>
