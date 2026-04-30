@@ -65,17 +65,20 @@ export default async function JobBriefPage({
     : { data: [] as { id: string; title: string; items: { id: string; text: string }[] }[] }
 
   // Fetch any existing checklist submissions for this surveyor on this entry,
-  // so previously ticked items show ticked.
-  const submissionsByTemplate: Record<string, string[]> = {}
+  // so prior responses load when re-opening.
+  const submissionsByTemplate: Record<string, { responses: any[]; submitted_at: string | null }> = {}
   if (staffProfile && checklists && checklists.length > 0) {
     const { data: subs } = await db
       .from('checklist_submissions')
-      .select('template_id, checked_items')
+      .select('template_id, responses, submitted_at')
       .eq('entry_id', entryId)
       .eq('staff_id', staffProfile.id)
       .in('template_id', checklists.map((c: any) => c.id))
     for (const s of (subs ?? [])) {
-      submissionsByTemplate[s.template_id] = s.checked_items ?? []
+      submissionsByTemplate[s.template_id] = {
+        responses: Array.isArray(s.responses) ? s.responses : [],
+        submitted_at: s.submitted_at ?? null,
+      }
     }
   }
 
@@ -139,17 +142,21 @@ export default async function JobBriefPage({
           <div>
             <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-2">Checklists</p>
             <div className="space-y-3">
-              {checklists.map((cl: any) => (
-                <InteractiveChecklist
-                  key={cl.id}
-                  entryId={entryId}
-                  staffId={staffProfile.id}
-                  templateId={cl.id}
-                  title={cl.title}
-                  items={cl.items}
-                  initialChecked={submissionsByTemplate[cl.id] ?? []}
-                />
-              ))}
+              {checklists.map((cl: any) => {
+                const sub = submissionsByTemplate[cl.id]
+                return (
+                  <InteractiveChecklist
+                    key={cl.id}
+                    entryId={entryId}
+                    staffId={staffProfile.id}
+                    templateId={cl.id}
+                    title={cl.title}
+                    items={cl.items}
+                    initialResponses={sub?.responses ?? []}
+                    initiallySubmittedAt={sub?.submitted_at ?? null}
+                  />
+                )
+              })}
             </div>
           </div>
         )}
