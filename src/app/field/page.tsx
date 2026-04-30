@@ -77,12 +77,21 @@ export default async function FieldTodayPage() {
 
   // Surveyor's per-entry visit status for today's entries
   const visitByEntry: Record<string, { saved_at: string | null; submitted_at: string | null; did_not_attend: boolean }> = {}
+  // Surveyor's per-entry logged hours
+  const hoursByEntry: Record<string, { total: number; isOvertime: boolean }> = {}
   if (entries.length > 0) {
-    const { data: vs } = await db
-      .from('field_staff_visit_status')
-      .select('entry_id, saved_at, submitted_at, did_not_attend')
-      .eq('staff_id', staffProfile.id)
-      .in('entry_id', entries.map((e: any) => e.id))
+    const todayEntryIds = entries.map((e: any) => e.id)
+    const [{ data: vs }, { data: tl }] = await Promise.all([
+      db.from('field_staff_visit_status')
+        .select('entry_id, saved_at, submitted_at, did_not_attend')
+        .eq('staff_id', staffProfile.id)
+        .in('entry_id', todayEntryIds),
+
+      db.from('field_time_logs')
+        .select('entry_id, total_hours, is_overtime')
+        .eq('staff_id', staffProfile.id)
+        .in('entry_id', todayEntryIds),
+    ])
     for (const v of (vs ?? [])) {
       visitByEntry[v.entry_id] = {
         saved_at:       v.saved_at ?? null,
@@ -90,7 +99,16 @@ export default async function FieldTodayPage() {
         did_not_attend: !!v.did_not_attend,
       }
     }
+    for (const t of (tl ?? [])) {
+      hoursByEntry[t.entry_id] = {
+        total:      Number(t.total_hours ?? 0),
+        isOvertime: !!t.is_overtime,
+      }
+    }
   }
+
+  // Total hours logged across today's jobs
+  const totalLoggedHours = Object.values(hoursByEntry).reduce((sum, h) => sum + h.total, 0)
 
   // Count how many of today's jobs are in each state
   let readyCount     = 0  // saved, not yet submitted (any kind — attended or DNA)
@@ -149,6 +167,9 @@ export default async function FieldTodayPage() {
           </p>
           <p className="text-[13px] text-[#6B6B6F] mt-1">
             {format(new Date(), 'EEEE, d MMMM yyyy')} · {entries.length} {entries.length === 1 ? 'job' : 'jobs'} scheduled
+            {totalLoggedHours > 0 && (
+              <> · <span className="text-[#1F7A3F] font-semibold">{totalLoggedHours.toFixed(2).replace(/\.?0+$/, '')}h logged</span></>
+            )}
           </p>
         </div>
 
@@ -172,6 +193,10 @@ export default async function FieldTodayPage() {
                 const task   = entry.project_tasks
                 const address = proj ? [proj.site_address, proj.suburb].filter(Boolean).join(', ') : null
                 const v = visitByEntry[entry.id]
+                const h = hoursByEntry[entry.id]
+                const loggedLabel = h
+                  ? `${h.total.toFixed(2).replace(/\.?0+$/, '')}h logged${h.isOvertime ? ' · OT' : ''}`
+                  : null
 
                 // Visit-status badge — overrides the schedule status pill once
                 // the surveyor has Saved / DNA'd / submitted.
@@ -212,9 +237,14 @@ export default async function FieldTodayPage() {
                             <div className="flex items-center gap-1">
                               <span className="w-[3px] h-3.5 bg-[#F39200] inline-block" />
                               <span className="text-xs font-semibold text-[#4B4B4F] uppercase">
-                                {entry.time_of_day}{entry.hours != null ? ` · ${entry.hours}h` : ''}
+                                {entry.time_of_day}{entry.hours != null ? ` · ${entry.hours}h sched` : ''}
                               </span>
                             </div>
+                          )}
+                          {loggedLabel && (
+                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${h?.isOvertime ? 'bg-[#FBF1D8] text-[#A86B0C]' : 'bg-[#E7F3EC] text-[#1F7A3F]'}`}>
+                              {loggedLabel}
+                            </span>
                           )}
                         </div>
 
