@@ -3,10 +3,10 @@ import Link from 'next/link'
 import { format, parseISO } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import {
-  ChevronLeft, MapPin, Clock, ShieldCheck, BookOpen,
+  ChevronLeft, MapPin, Clock, ShieldCheck, BookOpen, ListChecks,
   Camera, FileText, Timer, CheckCircle2, Circle, AlertCircle,
 } from 'lucide-react'
-import { SubmitJobButton } from '@/components/field/submit-job-button'
+import { SaveExitButton } from '@/components/field/save-exit-button'
 
 export default async function JobHubPage({
   params,
@@ -29,7 +29,6 @@ export default async function JobHubPage({
 
   if (!staffProfile) redirect('/field')
 
-  // Fetch the schedule entry
   const { data: entry } = await db
     .from('field_schedule_entries')
     .select(`
@@ -41,7 +40,7 @@ export default async function JobHubPage({
         clients ( name, company_name ),
         job_manager:staff_profiles!job_manager_id ( full_name, email )
       ),
-      project_tasks ( id, title ),
+      project_tasks ( id, title, task_definition_id ),
       office_surveyor:staff_profiles!office_surveyor_id ( full_name )
     `)
     .eq('id', entryId)
@@ -49,17 +48,26 @@ export default async function JobHubPage({
 
   if (!entry) notFound()
 
-  // Parallel completion checks
+  const taskDefinitionId: string | null = entry.project_tasks?.task_definition_id ?? null
+
+  // Parallel completion checks. Per the design:
+  //   * Brief acknowledgement, JSA, Checklist, Photos, Fieldnotes are
+  //     entry-level (one surveyor's completion covers both).
+  //   * Time Log is per-staff (each surveyor logs their own hours).
+  //   * Visit status row is per-staff (Save & Exit / Did-Not-Attend).
   const [
-    { data: jsa },
+    { data: jsaAny },
     { data: timeLog },
     { count: photoCount },
     { count: notesCount },
+    { data: checklistTpl },
+    { data: visitStatus },
   ] = await Promise.all([
     db.from('jsa_submissions')
       .select('id, submitted_at')
       .eq('entry_id', entryId)
-      .eq('staff_id', staffProfile.id)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
       .maybeSingle(),
 
     db.from('field_time_logs')
@@ -77,10 +85,54 @@ export default async function JobHubPage({
       .select('id', { count: 'exact', head: true })
       .eq('entry_id', entryId)
       .eq('type', 'fieldbook_note'),
+
+    taskDefinitionId
+      ? db.from('checklist_templates')
+          .select('id')
+          .eq('is_active', true)
+          .eq('task_definition_id', taskDefinitionId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+
+    db.from('field_staff_visit_status')
+      .select('saved_at, did_not_attend, dna_reason, submitted_at')
+      .eq('entry_id', entryId)
+      .eq('staff_id', staffProfile.id)
+      .maybeSingle(),
   ])
+
+  // Checklist completion: if a template exists for this task, look for any
+  // surveyor's submitted submission on this entry.
+  let checklistDone = !checklistTpl // no template -> auto-pass
+  if (checklistTpl) {
+    const { data: cs } = await db
+      .from('checklist_submissions')
+      .select('submitted_at')
+      .eq('entry_id', entryId)
+      .eq('template_id', checklistTpl.id)
+      .not('submitted_at', 'is', null)
+      .limit(1)
+      .maybeSingle()
+    checklistDone = !!cs
+  }
 
   const briefContent: string | null = (entry.notes ?? '').trim() || null
   const briefAcknowledged = !!entry.brief_acknowledged_at
+  const jsaDone           = !!jsaAny
+  const photosDone        = (photoCount ?? 0) > 0
+  const notesDone         = (notesCount ?? 0) > 0
+  const timeLogDone       = !!timeLog
+  const isSaved           = !!visitStatus?.saved_at
+  const didNotAttend      = !!visitStatus?.did_not_attend
+
+  // Build blocker list for Save & Exit. (Skipped entirely if user can DNA.)
+  const blockers: { label: string }[] = []
+  if (!briefAcknowledged) blockers.push({ label: 'Acknowledge the Job Brief' })
+  if (!jsaDone)           blockers.push({ label: 'Complete the Risk Assessment' })
+  if (!checklistDone)     blockers.push({ label: 'Submit the Checklist' })
+  if (!photosDone)        blockers.push({ label: 'Upload at least 1 site photo' })
+  if (!notesDone)         blockers.push({ label: 'Upload at least 1 fieldbook page' })
+  if (!timeLogDone)       blockers.push({ label: 'Record your Time Log' })
 
   const proj    = entry.projects
   const task    = entry.project_tasks
@@ -102,7 +154,6 @@ export default async function JobHubPage({
           </div>
         </div>
 
-        {/* Job details strip */}
         <div className="pb-5 space-y-2">
           {task && (
             <p className="text-[20px] font-bold text-white leading-snug">{task.title}</p>
@@ -133,7 +184,23 @@ export default async function JobHubPage({
         <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-3">Actions</p>
         <div className="space-y-2.5">
 
-          {/* Safety / JSA */}
+          {/* Job Brief */}
+          <HubTile
+            href={`/field/${entryId}/brief`}
+            icon={<BookOpen className="h-[22px] w-[22px]" />}
+            iconBg="bg-[#FBF1D8] text-[#A86B0C]"
+            accentColor="bg-[#F39200]"
+            title="Job Brief"
+            subtitle="Read the brief and acknowledge"
+            status={briefAcknowledged ? 'done' : 'required'}
+            statusLabel={
+              briefAcknowledged
+                ? 'Acknowledged'
+                : (briefContent ? 'Brief available — please acknowledge' : 'No brief — please acknowledge')
+            }
+          />
+
+          {/* Risk Assessment */}
           <HubTile
             href={`/field/${entryId}/safety`}
             icon={<ShieldCheck className="h-[22px] w-[22px]" />}
@@ -141,23 +208,27 @@ export default async function JobHubPage({
             accentColor="bg-[#A31D1D]"
             title="Risk Assessment"
             subtitle="Complete pre-start safety form"
-            status={jsa ? 'done' : 'required'}
-            statusLabel={jsa ? `Completed · ${format(parseISO(jsa.submitted_at), 'd MMM h:mm a')}` : 'Required before starting'}
+            status={jsaDone ? 'done' : 'required'}
+            statusLabel={
+              jsaDone
+                ? `Completed · ${format(parseISO(jsaAny.submitted_at), 'd MMM h:mm a')}`
+                : 'Required before starting'
+            }
           />
 
-          {/* Job Brief */}
+          {/* Checklist */}
           <HubTile
-            href={`/field/${entryId}/brief`}
-            icon={<BookOpen className="h-[22px] w-[22px]" />}
-            iconBg="bg-[#FBF1D8] text-[#A86B0C]"
+            href={`/field/${entryId}/checklist`}
+            icon={<ListChecks className="h-[22px] w-[22px]" />}
+            iconBg="bg-[#FFF1E0] text-[#C5670B]"
             accentColor="bg-[#F39200]"
-            title="Job Brief & Checklists"
-            subtitle="Instructions and equipment checklist"
-            status={briefAcknowledged ? 'done' : (briefContent ? 'available' : 'none')}
+            title="Checklist"
+            subtitle={taskDefinitionId ? 'Task-specific checks' : 'No checklist for this task'}
+            status={checklistDone ? 'done' : 'required'}
             statusLabel={
-              briefAcknowledged
-                ? 'Acknowledged'
-                : (briefContent ? 'Brief available — please acknowledge' : 'No brief provided — please acknowledge')
+              !checklistTpl
+                ? 'No checklist required'
+                : (checklistDone ? 'Submitted' : 'Required — Yes/No on each item')
             }
           />
 
@@ -169,8 +240,8 @@ export default async function JobHubPage({
             accentColor="bg-[#1F7A3F]"
             title="Site Photos"
             subtitle="Capture and upload site images"
-            status={(photoCount ?? 0) > 0 ? 'done' : 'pending'}
-            statusLabel={(photoCount ?? 0) > 0 ? `${photoCount} photo${photoCount === 1 ? '' : 's'} uploaded` : 'No photos yet'}
+            status={photosDone ? 'done' : 'required'}
+            statusLabel={photosDone ? `${photoCount} photo${photoCount === 1 ? '' : 's'} uploaded` : 'At least 1 required'}
           />
 
           {/* Fieldbook Notes */}
@@ -181,8 +252,8 @@ export default async function JobHubPage({
             accentColor="bg-[#D6D6D9]"
             title="Fieldbook Notes"
             subtitle="Photograph your fieldbook pages"
-            status={(notesCount ?? 0) > 0 ? 'done' : 'pending'}
-            statusLabel={(notesCount ?? 0) > 0 ? `${notesCount} page${notesCount === 1 ? '' : 's'} uploaded` : 'No pages uploaded'}
+            status={notesDone ? 'done' : 'required'}
+            statusLabel={notesDone ? `${notesCount} page${notesCount === 1 ? '' : 's'} uploaded` : 'At least 1 required'}
           />
 
           {/* Time Log */}
@@ -193,37 +264,33 @@ export default async function JobHubPage({
             accentColor="bg-[#2257A3]"
             title="Time Log"
             subtitle="Record start, finish and breaks"
-            status={timeLog ? 'done' : 'pending'}
+            status={timeLogDone ? 'done' : 'required'}
             statusLabel={
-              timeLog
-                ? `${timeLog.total_hours}h logged${timeLog.is_overtime ? ' · Overtime' : ''}`
-                : 'Not yet submitted'
+              timeLogDone
+                ? `${timeLog!.total_hours}h logged${timeLog!.is_overtime ? ' · Overtime' : ''}`
+                : 'Required'
             }
             overtime={timeLog?.is_overtime}
           />
 
         </div>
 
-        {/* Submit button */}
+        {/* Save & Exit / DNA */}
         <div className="mt-6 pb-8">
-          <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-3">End of Day</p>
-          <SubmitJobButton
+          <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-3">Finish Job</p>
+          <SaveExitButton
             entryId={entryId}
-            projectId={entry.project_id}
-            taskId={entry.task_id ?? null}
-            taskTitle={task?.title ?? null}
             staffId={staffProfile.id}
-            staffRole={(staffProfile as any).role ?? ''}
-            actingRole={(timeLog as any)?.acting_role ?? null}
-            workDate={entry.date}
-            timeLogId={timeLog?.id ?? null}
-            timeEntryId={null}
-            timeLogNotes={timeLog?.notes ?? null}
-            totalHours={timeLog?.total_hours ?? null}
-            isOvertime={timeLog?.is_overtime ?? false}
-            jsaDone={!!jsa}
-            alreadyComplete={entry.status === 'completed'}
+            blockers={blockers}
+            savedAt={visitStatus?.saved_at ?? null}
+            didNotAttend={didNotAttend}
+            dnaReason={visitStatus?.dna_reason ?? null}
           />
+          {!isSaved && (
+            <p className="text-[11px] text-[#9A9A9C] text-center mt-3">
+              Saving doesn&apos;t submit your hours yet — submit the day&apos;s work from the field schedule when you&apos;re done.
+            </p>
+          )}
         </div>
 
       </div>
