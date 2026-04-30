@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2, CheckCircle2, AlertTriangle, Clock } from 'lucide-react'
@@ -18,8 +18,8 @@ interface Props {
   workDate:  string   // 'yyyy-MM-dd'
   roleRates: RoleOption[]
   existing?: {
-    start_time:    string
-    end_time:      string
+    start_time:    string | null
+    end_time:      string | null
     break_minutes: number
     total_hours:   number
     is_overtime:   boolean
@@ -27,6 +27,8 @@ interface Props {
     acting_role:   string | null
   } | null
 }
+
+type Mode = 'times' | 'hours'
 
 function calcTotalHours(start: string, end: string, breakMins: number): number | null {
   if (!start || !end) return null
@@ -44,9 +46,16 @@ function calcTotalHours(start: string, end: string, breakMins: number): number |
 export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, existing }: Props) {
   const router = useRouter()
 
+  // If the existing record was saved without start/end (hours-only), open in that mode.
+  const initialMode: Mode = existing && !existing.start_time && !existing.end_time ? 'hours' : 'times'
+
+  const [mode,        setMode]        = useState<Mode>(initialMode)
   const [startTime,   setStartTime]   = useState(existing?.start_time    ?? '')
   const [endTime,     setEndTime]     = useState(existing?.end_time       ?? '')
   const [breakMins,   setBreakMins]   = useState(existing?.break_minutes  ?? 0)
+  const [hoursInput,  setHoursInput]  = useState<string>(
+    initialMode === 'hours' && existing ? String(existing.total_hours) : ''
+  )
   const [notes,       setNotes]       = useState(existing?.notes          ?? '')
   const [actingRole,  setActingRole]  = useState<string>(
     existing?.acting_role ?? staffRole ?? ''
@@ -55,12 +64,24 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
   const [error,       setError]       = useState<string | null>(null)
   const [done,        setDone]        = useState(false)
 
-  const totalHours  = calcTotalHours(startTime, endTime, breakMins)
-  const isOvertime  = totalHours != null && totalHours > 8
+  const totalHoursFromTimes = calcTotalHours(startTime, endTime, breakMins)
+  const totalHoursFromInput = (() => {
+    const n = parseFloat(hoursInput)
+    return isNaN(n) || n <= 0 ? null : Math.round(n * 100) / 100
+  })()
+
+  const totalHours = mode === 'times' ? totalHoursFromTimes : totalHoursFromInput
+  const isOvertime = totalHours != null && totalHours > 8
+
+  const submitDisabled = saving || totalHours === null || !notes.trim()
 
   async function handleSubmit() {
-    if (!startTime || !endTime) { setError('Start and end times are required.'); return }
-    if (totalHours === null) { setError('End time must be after start time.'); return }
+    if (mode === 'times') {
+      if (!startTime || !endTime) { setError('Start and end times are required.'); return }
+      if (totalHoursFromTimes === null) { setError('End time must be after start time.'); return }
+    } else {
+      if (totalHoursFromInput === null) { setError('Enter the hours onsite (more than 0).'); return }
+    }
     if (!notes.trim()) { setError('Task Description is required.'); return }
 
     setSaving(true)
@@ -69,20 +90,32 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
 
     const actingRoleToSave = actingRole && actingRole !== (staffRole ?? null) ? actingRole : null
 
+    const payload =
+      mode === 'times'
+        ? {
+            start_time:    startTime,
+            end_time:      endTime,
+            break_minutes: breakMins,
+            total_hours:   totalHoursFromTimes,
+          }
+        : {
+            start_time:    null,
+            end_time:      null,
+            break_minutes: 0,
+            total_hours:   totalHoursFromInput,
+          }
+
     const { error: dbErr } = await db
       .from('field_time_logs')
       .upsert({
-        entry_id:       entryId,
-        staff_id:       staffId,
-        work_date:      workDate,
-        start_time:     startTime,
-        end_time:       endTime,
-        break_minutes:  breakMins,
-        total_hours:    totalHours,
-        is_overtime:    isOvertime,
-        notes:          notes.trim() || null,
-        acting_role:    actingRoleToSave,
-        updated_at:     new Date().toISOString(),
+        entry_id:     entryId,
+        staff_id:     staffId,
+        work_date:    workDate,
+        ...payload,
+        is_overtime:  isOvertime,
+        notes:        notes.trim(),
+        acting_role:  actingRoleToSave,
+        updated_at:   new Date().toISOString(),
       }, { onConflict: 'entry_id,staff_id' })
 
     if (dbErr) {
@@ -113,62 +146,113 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
     <div className="flex-1 overflow-y-auto bg-[#F5F4F1]">
       <div className="px-5 py-5 space-y-5">
 
-        <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase">Shift Hours</p>
-
-        {/* Start + End times */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white border border-[#E8E6E0] rounded-xl p-3.5">
-            <label className="block text-[10px] font-bold text-[#6B6B6F] tracking-[0.12em] mb-2">START</label>
-            <input
-              type="time"
-              value={startTime}
-              onChange={e => setStartTime(e.target.value)}
-              className="w-full bg-transparent text-2xl font-bold text-[#111111] focus:outline-none"
-            />
-          </div>
-          <div className="bg-white border-2 border-[#F39200] rounded-xl p-3.5">
-            <label className="block text-[10px] font-bold text-[#F39200] tracking-[0.12em] mb-2">END</label>
-            <input
-              type="time"
-              value={endTime}
-              onChange={e => setEndTime(e.target.value)}
-              className="w-full bg-transparent text-2xl font-bold text-[#111111] focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* Break */}
+        {/* Mode toggle */}
         <div>
-          <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-2.5">Break</p>
-          <div className="flex items-center gap-2">
-            {[0, 15, 30, 45, 60].map(mins => (
-              <button
-                key={mins}
-                type="button"
-                onClick={() => setBreakMins(mins)}
-                className={`flex-1 py-2.5 rounded-lg text-[13px] font-bold border transition-colors ${
-                  breakMins === mins
-                    ? 'bg-[#111111] text-[#F39200] border-[#111111]'
-                    : 'bg-white text-[#6B6B6F] border-[#E8E6E0]'
-                }`}
-              >
-                {mins === 0 ? 'None' : `${mins}m`}
-              </button>
-            ))}
-          </div>
-          {/* Custom break minutes */}
-          <div className="mt-2 flex items-center gap-2">
-            <input
-              type="number"
-              min="0"
-              step="5"
-              value={breakMins}
-              onChange={e => setBreakMins(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-24 border border-[#E8E6E0] bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#F39200]"
-            />
-            <span className="text-sm text-[#6B6B6F]">minutes (custom)</span>
+          <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-2">Log As</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setMode('times')}
+              className={`py-2.5 rounded-lg text-[13px] font-bold border transition-colors ${
+                mode === 'times'
+                  ? 'bg-[#111111] text-[#F39200] border-[#111111]'
+                  : 'bg-white text-[#6B6B6F] border-[#E8E6E0]'
+              }`}
+            >
+              Start &amp; End Times
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('hours')}
+              className={`py-2.5 rounded-lg text-[13px] font-bold border transition-colors ${
+                mode === 'hours'
+                  ? 'bg-[#111111] text-[#F39200] border-[#111111]'
+                  : 'bg-white text-[#6B6B6F] border-[#E8E6E0]'
+              }`}
+            >
+              Hours Onsite
+            </button>
           </div>
         </div>
+
+        {mode === 'times' ? (
+          <>
+            <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase">Shift Hours</p>
+
+            {/* Start + End times */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white border border-[#E8E6E0] rounded-xl p-3.5">
+                <label className="block text-[10px] font-bold text-[#6B6B6F] tracking-[0.12em] mb-2">START</label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  className="w-full bg-transparent text-2xl font-bold text-[#111111] focus:outline-none"
+                />
+              </div>
+              <div className="bg-white border-2 border-[#F39200] rounded-xl p-3.5">
+                <label className="block text-[10px] font-bold text-[#F39200] tracking-[0.12em] mb-2">END</label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  className="w-full bg-transparent text-2xl font-bold text-[#111111] focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Break */}
+            <div>
+              <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-2.5">Break</p>
+              <div className="flex items-center gap-2">
+                {[0, 15, 30, 45, 60].map(mins => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => setBreakMins(mins)}
+                    className={`flex-1 py-2.5 rounded-lg text-[13px] font-bold border transition-colors ${
+                      breakMins === mins
+                        ? 'bg-[#111111] text-[#F39200] border-[#111111]'
+                        : 'bg-white text-[#6B6B6F] border-[#E8E6E0]'
+                    }`}
+                  >
+                    {mins === 0 ? 'None' : `${mins}m`}
+                  </button>
+                ))}
+              </div>
+              {/* Custom break minutes */}
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="5"
+                  value={breakMins}
+                  onChange={e => setBreakMins(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-24 border border-[#E8E6E0] bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#F39200]"
+                />
+                <span className="text-sm text-[#6B6B6F]">minutes (custom)</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div>
+            <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-2">Hours Onsite</p>
+            <div className="bg-white border-2 border-[#F39200] rounded-xl p-4 flex items-baseline gap-2">
+              <input
+                type="number"
+                min="0"
+                step="0.25"
+                inputMode="decimal"
+                value={hoursInput}
+                onChange={e => setHoursInput(e.target.value)}
+                placeholder="0.00"
+                className="w-28 bg-transparent text-3xl font-bold text-[#111111] focus:outline-none"
+              />
+              <span className="text-base font-bold text-[#6B6B6F]">hours</span>
+            </div>
+            <p className="text-xs text-[#9A9A9C] mt-1.5">Enter the total hours spent onsite. Use 0.25 increments (e.g. 7.5).</p>
+          </div>
+        )}
 
         {/* Total hours summary */}
         {totalHours !== null && (
@@ -221,7 +305,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
         {/* Task Description */}
         <div>
           <label className="block text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-2">
-            Task Description
+            Task Description <span className="text-[#A31D1D]">*</span>
           </label>
           <textarea
             rows={4}
@@ -230,7 +314,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
             placeholder="Describe the work carried out today, e.g. 'Set out columns for Stage 2, checked as-built levels'"
             className="w-full border border-[#E8E6E0] bg-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#F39200] resize-none"
           />
-          <p className="text-xs text-[#9A9A9C] mt-1.5">Appears as the Task Description in the timesheet.</p>
+          <p className="text-xs text-[#9A9A9C] mt-1.5">Required. Appears as the Task Description in the timesheet.</p>
         </div>
 
         {isOvertime && (
@@ -253,7 +337,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={saving || totalHours === null || !notes.trim()}
+          disabled={submitDisabled}
           className="w-full py-3.5 bg-[#111111] hover:bg-black disabled:bg-[#4B4B4F] disabled:cursor-not-allowed text-white font-semibold rounded-full text-sm transition-colors flex items-center justify-center gap-2"
         >
           {saving
