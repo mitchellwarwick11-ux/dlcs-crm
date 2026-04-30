@@ -45,17 +45,30 @@ export default async function DocumentsPage({
 
   const docList = (docs ?? []) as any[]
 
-  const { data: sitePhotos } = await db
-    .from('field_photos')
-    .select('id, field_schedule_entries ( date )')
+  const { data: visitRows } = await db
+    .from('field_schedule_entries')
+    .select(`
+      id, date,
+      project_tasks ( title ),
+      field_photos ( id, type ),
+      jsa_submissions ( id )
+    `)
     .eq('project_id', (project as any).id)
-    .eq('type', 'site_photo')
+    .order('date', { ascending: false })
 
-  const sitePhotoList = (sitePhotos ?? []) as any[]
-  const sitePhotoCount = sitePhotoList.length
-  const sitePhotoVisitCount = new Set(
-    sitePhotoList.map((p) => p.field_schedule_entries?.date).filter(Boolean)
-  ).size
+  const visits = ((visitRows ?? []) as any[])
+    .map((e) => {
+      const photos = (e.field_photos ?? []) as any[]
+      return {
+        id:             e.id,
+        date:           e.date as string,
+        taskTitle:      e.project_tasks?.title ?? null,
+        sitePhotoCount: photos.filter((p) => p.type === 'site_photo').length,
+        fieldnoteCount: photos.filter((p) => p.type === 'fieldbook_note').length,
+        hasJsa:         (e.jsa_submissions ?? []).length > 0,
+      }
+    })
+    .filter((v) => v.hasJsa || v.sitePhotoCount > 0 || v.fieldnoteCount > 0)
 
   // Generate signed URLs (1 hour expiry)
   const docsWithUrls = await Promise.all(
@@ -81,32 +94,45 @@ export default async function DocumentsPage({
         </h2>
       </div>
 
-      {sitePhotoCount > 0 && (
-        <Card>
-          <CardContent className="p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="h-9 w-9 shrink-0 rounded-md bg-amber-50 flex items-center justify-center">
-                <Camera className="h-4 w-4 text-amber-600" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-slate-800">Site Photos</p>
-                <p className="text-xs text-slate-500">
-                  {sitePhotoCount} photo{sitePhotoCount !== 1 ? 's' : ''}
-                  {sitePhotoVisitCount > 0 && (
-                    <> across {sitePhotoVisitCount} site visit{sitePhotoVisitCount !== 1 ? 's' : ''}</>
-                  )}
-                </p>
-              </div>
-            </div>
-            <a
-              href={`/api/projects/${jobNumber}/site-photos.zip`}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 px-3 py-1.5 border border-blue-200 rounded-md whitespace-nowrap"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Download all as ZIP
-            </a>
-          </CardContent>
-        </Card>
+      {visits.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+            Site Visits
+          </h3>
+          {visits.map((v) => {
+            const parts: string[] = []
+            if (v.hasJsa) parts.push('risk assessment')
+            if (v.sitePhotoCount > 0) parts.push(`${v.sitePhotoCount} site photo${v.sitePhotoCount !== 1 ? 's' : ''}`)
+            if (v.fieldnoteCount > 0) parts.push(`${v.fieldnoteCount} fieldnote${v.fieldnoteCount !== 1 ? 's' : ''}`)
+            return (
+              <Card key={v.id}>
+                <CardContent className="p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-9 w-9 shrink-0 rounded-md bg-amber-50 flex items-center justify-center">
+                      <Camera className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-800">
+                        {formatDate(v.date)}
+                        {v.taskTitle && (
+                          <span className="ml-2 font-normal text-slate-500">· {v.taskTitle}</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-slate-500">{parts.join(' · ')}</p>
+                    </div>
+                  </div>
+                  <a
+                    href={`/api/projects/${jobNumber}/field-visits/${v.id}/zip`}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 px-3 py-1.5 border border-blue-200 rounded-md whitespace-nowrap"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download as ZIP
+                  </a>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
       )}
 
       {docsWithUrls.length === 0 ? (
