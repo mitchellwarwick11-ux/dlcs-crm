@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { MapPin, ChevronRight, Inbox, CheckCircle2, AlertCircle, Circle } from 'lucide-react'
 import { SubmitDayButton } from '@/components/field/submit-day-button'
+import { nowInCompanyTz, addDaysIso } from '@/lib/utils/timezone'
 
 const STATUS_LABELS: Record<string, string> = {
   must_happen: 'Must Happen',
@@ -44,7 +45,8 @@ export default async function FieldTodayPage() {
     )
   }
 
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const tzNow = nowInCompanyTz()
+  const today = tzNow.isoDate
 
   // Step 1: find which entries this surveyor is on today
   const { data: myLinks } = await db
@@ -120,8 +122,8 @@ export default async function FieldTodayPage() {
   }
 
   // Also check for upcoming entries this week (next 4 days)
-  const tomorrow = format(new Date(Date.now() + 86400000), 'yyyy-MM-dd')
-  const inFiveDays = format(new Date(Date.now() + 5 * 86400000), 'yyyy-MM-dd')
+  const tomorrow   = addDaysIso(tzNow.midnightDate, 1)
+  const inFiveDays = addDaysIso(tzNow.midnightDate, 5)
   let upcomingEntries: any[] = []
   if (entryIds.length > 0) {
     const { data } = await db
@@ -163,10 +165,10 @@ export default async function FieldTodayPage() {
         <div>
           <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase">Today</p>
           <p className="text-[26px] font-bold text-[#111111] mt-1.5 leading-tight">
-            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {staffProfile.full_name.split(' ')[0]}
+            Good {tzNow.parts.hour < 12 ? 'morning' : tzNow.parts.hour < 17 ? 'afternoon' : 'evening'}, {staffProfile.full_name.split(' ')[0]}
           </p>
           <p className="text-[13px] text-[#6B6B6F] mt-1">
-            {format(new Date(), 'EEEE, d MMMM yyyy')} · {entries.length} {entries.length === 1 ? 'job' : 'jobs'} scheduled
+            {format(tzNow.midnightDate, 'EEEE, d MMMM yyyy')} · {entries.length} {entries.length === 1 ? 'job' : 'jobs'} scheduled
             {totalLoggedHours > 0 && (
               <> · <span className="text-[#1F7A3F] font-semibold">{totalLoggedHours.toFixed(2).replace(/\.?0+$/, '')}h logged</span></>
             )}
@@ -177,7 +179,7 @@ export default async function FieldTodayPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase">Today&apos;s Jobs</h2>
-            <span className="text-xs text-[#6B6B6F]">{format(new Date(), 'EEE d MMM')}</span>
+            <span className="text-xs text-[#6B6B6F]">{format(tzNow.midnightDate, 'EEE d MMM')}</span>
           </div>
 
           {entries.length === 0 ? (
@@ -295,7 +297,15 @@ export default async function FieldTodayPage() {
         {/* Upcoming this week */}
         {upcomingEntries.length > 0 && (
           <div>
-            <h2 className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-2">Coming up</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase">Coming up</h2>
+              <Link
+                href="/field/upcoming"
+                className="text-[11px] font-semibold text-[#F39200] hover:underline"
+              >
+                View all →
+              </Link>
+            </div>
             <div className="space-y-1.5">
               {upcomingEntries.map((entry: any) => {
                 const proj = entry.projects
@@ -323,6 +333,20 @@ export default async function FieldTodayPage() {
               })}
             </div>
           </div>
+        )}
+
+        {/* Always-available link to full upcoming schedule */}
+        {upcomingEntries.length === 0 && (
+          <Link
+            href="/field/upcoming"
+            className="flex items-center justify-between gap-3 px-4 py-3 bg-white rounded-xl border border-[#E8E6E0] hover:border-[#F39200] transition-colors"
+          >
+            <div>
+              <p className="text-[13px] font-semibold text-[#1F1F22]">View upcoming jobs</p>
+              <p className="text-[11px] text-[#9A9A9C] mt-0.5">See all your future assignments</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-[#BDBDC0] shrink-0" />
+          </Link>
         )}
 
       </div>
