@@ -217,15 +217,22 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
     if (quotePrefill) {
       // Create one task per line item (Fixed Fee), linked back to the source quote
       if (quotePrefill.lineItems.length > 0) {
+        // Match each line item title to a task_definition by name (case-
+        // insensitive) so the field-app checklist lookup works.
+        const defByName = new Map<string, string>()
+        for (const def of taskDefinitions) {
+          defByName.set(def.name.trim().toLowerCase(), def.id)
+        }
         const quoteTaskInserts = quotePrefill.lineItems.map((item, i) => ({
-          project_id:    project.id,
-          quote_id:      quotePrefill.quoteId,
-          title:         item.description,
-          fee_type:      'fixed',
-          quoted_amount: item.amount,
-          status:        'not_started',
-          sort_order:    i,
-          created_by:    userId,
+          project_id:         project.id,
+          quote_id:           quotePrefill.quoteId,
+          task_definition_id: defByName.get((item.description ?? '').trim().toLowerCase()) ?? null,
+          title:              item.description,
+          fee_type:           'fixed',
+          quoted_amount:      item.amount,
+          status:             'not_started',
+          sort_order:         i,
+          created_by:         userId,
         }))
         await db.from('project_tasks').insert(quoteTaskInserts)
       }

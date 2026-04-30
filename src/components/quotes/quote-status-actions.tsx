@@ -66,18 +66,31 @@ export function QuoteStatusActions({ quoteId, status, hasLinkedJob, projectId }:
 
       const quoteTasks = Array.isArray(quote?.selected_quote_tasks) ? quote.selected_quote_tasks : []
 
+      // Match titles against task_definitions so the checklist lookup works.
+      const { data: taskDefs } = await db
+        .from('task_definitions')
+        .select('id, name')
+        .eq('is_active', true)
+      const defByName = new Map<string, string>()
+      for (const def of (taskDefs ?? [])) {
+        defByName.set((def.name ?? '').trim().toLowerCase(), def.id)
+      }
+      const matchDef = (title: string): string | null =>
+        defByName.get((title ?? '').trim().toLowerCase()) ?? null
+
       let rows: any[] = []
       if (quoteTasks.length > 0) {
         rows = quoteTasks
           .filter((t: any) => (t?.title ?? '').trim().length > 0)
           .map((t: any, idx: number) => ({
-            project_id:    projectId,
-            quote_id:      quoteId,
-            title:         t.title,
-            fee_type:      'fixed',
-            quoted_amount: t.price ?? 0,
-            status:        'not_started',
-            sort_order:    idx,
+            project_id:         projectId,
+            quote_id:           quoteId,
+            task_definition_id: matchDef(t.title),
+            title:              t.title,
+            fee_type:           'fixed',
+            quoted_amount:      t.price ?? 0,
+            status:             'not_started',
+            sort_order:         idx,
           }))
       } else {
         const { data: lineItems } = await db
@@ -86,13 +99,14 @@ export function QuoteStatusActions({ quoteId, status, hasLinkedJob, projectId }:
           .eq('quote_id', quoteId)
           .order('sort_order')
         rows = (lineItems ?? []).map((item: any, idx: number) => ({
-          project_id:    projectId,
-          quote_id:      quoteId,
-          title:         item.description,
-          fee_type:      'fixed',
-          quoted_amount: item.amount,
-          status:        'not_started',
-          sort_order:    idx,
+          project_id:         projectId,
+          quote_id:           quoteId,
+          task_definition_id: matchDef(item.description),
+          title:              item.description,
+          fee_type:           'fixed',
+          quoted_amount:      item.amount,
+          status:             'not_started',
+          sort_order:         idx,
         }))
       }
 
