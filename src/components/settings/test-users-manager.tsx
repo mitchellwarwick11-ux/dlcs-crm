@@ -7,12 +7,35 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Trash2, Copy, Check } from 'lucide-react'
 
+type AccessLevel = 'staff' | 'project_manager' | 'admin'
+
 interface TestUser {
   id: string
   email: string
   full_name: string
+  role: string | null
+  default_hourly_rate: number | null
+  access_level: AccessLevel
   created_at: string
 }
+
+interface RoleRate {
+  role_key: string
+  label: string
+  hourly_rate: number
+}
+
+const ACCESS_LEVEL_LABELS: Record<AccessLevel, string> = {
+  staff: 'Staff',
+  project_manager: 'Project Manager',
+  admin: 'Administrator',
+}
+
+const ACCESS_LEVEL_OPTIONS = [
+  { value: 'staff' as const,           label: 'Staff — limited access' },
+  { value: 'project_manager' as const, label: 'Project Manager — mid-level access' },
+  { value: 'admin' as const,           label: 'Administrator — full access' },
+]
 
 function generatePassword() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
@@ -23,13 +46,23 @@ function generatePassword() {
   return out
 }
 
-export function TestUsersManager({ initialUsers }: { initialUsers: TestUser[] }) {
+export function TestUsersManager({
+  initialUsers,
+  roleRates,
+}: {
+  initialUsers: TestUser[]
+  roleRates: RoleRate[]
+}) {
   const router = useRouter()
   const [, startTransition] = useTransition()
 
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const [password, setPassword] = useState(generatePassword())
+  const [roleKey, setRoleKey] = useState('')
+  const [hourlyRate, setHourlyRate] = useState<number>(0)
+  const [accessLevel, setAccessLevel] = useState<AccessLevel>('staff')
+
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [justCreated, setJustCreated] = useState<{ email: string; password: string } | null>(null)
@@ -38,16 +71,38 @@ export function TestUsersManager({ initialUsers }: { initialUsers: TestUser[] })
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
+  const selectedRole = roleRates.find(r => r.role_key === roleKey)
+
+  function handleRoleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const key = e.target.value
+    setRoleKey(key)
+    const r = roleRates.find(rr => rr.role_key === key)
+    if (r) setHourlyRate(r.hourly_rate)
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setCreateError(null)
     setJustCreated(null)
+
+    if (!roleKey) {
+      setCreateError('Please choose a role')
+      return
+    }
+
     setCreating(true)
 
     const res = await fetch('/api/admin/test-users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim(), password, full_name: fullName.trim() }),
+      body: JSON.stringify({
+        email: email.trim(),
+        password,
+        full_name: fullName.trim(),
+        role: roleKey,
+        hourly_rate: hourlyRate,
+        access_level: accessLevel,
+      }),
     })
 
     setCreating(false)
@@ -62,6 +117,9 @@ export function TestUsersManager({ initialUsers }: { initialUsers: TestUser[] })
     setEmail('')
     setFullName('')
     setPassword(generatePassword())
+    setRoleKey('')
+    setHourlyRate(0)
+    setAccessLevel('staff')
     startTransition(() => router.refresh())
   }
 
@@ -92,12 +150,29 @@ export function TestUsersManager({ initialUsers }: { initialUsers: TestUser[] })
     setTimeout(() => setCopied(false), 2000)
   }
 
+  function formatRoleLabel(roleKey: string | null) {
+    if (!roleKey) return '—'
+    const match = roleRates.find(r => r.role_key === roleKey)
+    return match?.label ?? roleKey
+  }
+
   return (
     <div className="space-y-10">
       <section>
         <h2 className="text-lg font-semibold text-slate-900 mb-4">Add a test user</h2>
         <form onSubmit={handleCreate} className="space-y-4 rounded-lg border border-slate-200 p-4 bg-white">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="tu-name">Full name</Label>
+              <Input
+                id="tu-name"
+                value={fullName}
+                onChange={e => setFullName(e.target.value)}
+                placeholder="Jane Tester"
+                required
+                autoComplete="off"
+              />
+            </div>
             <div className="space-y-1">
               <Label htmlFor="tu-email">Email</Label>
               <Input
@@ -110,17 +185,63 @@ export function TestUsersManager({ initialUsers }: { initialUsers: TestUser[] })
                 autoComplete="off"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label htmlFor="tu-name">Display name</Label>
-              <Input
-                id="tu-name"
-                value={fullName}
-                onChange={e => setFullName(e.target.value)}
-                placeholder="Jane Tester"
-                autoComplete="off"
-              />
+              <Label htmlFor="tu-role">Role</Label>
+              <select
+                id="tu-role"
+                value={roleKey}
+                onChange={handleRoleChange}
+                required
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">— Select role —</option>
+                {roleRates.map(r => (
+                  <option key={r.role_key} value={r.role_key}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="tu-rate">
+                Hourly rate
+                {selectedRole && (
+                  <span className="ml-2 text-xs text-slate-400 font-normal">
+                    (default: ${selectedRole.hourly_rate.toFixed(2)}/hr)
+                  </span>
+                )}
+              </Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                <Input
+                  id="tu-rate"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={hourlyRate}
+                  onChange={e => setHourlyRate(parseFloat(e.target.value) || 0)}
+                  className="pl-6"
+                />
+              </div>
             </div>
           </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="tu-access">Access level</Label>
+            <select
+              id="tu-access"
+              value={accessLevel}
+              onChange={e => setAccessLevel(e.target.value as AccessLevel)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              {ACCESS_LEVEL_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="space-y-1">
             <Label htmlFor="tu-password">Password</Label>
             <div className="flex gap-2">
@@ -188,7 +309,8 @@ export function TestUsersManager({ initialUsers }: { initialUsers: TestUser[] })
               <tr className="border-b border-slate-200">
                 <th className="text-left font-medium text-slate-500 px-4 py-2">Name</th>
                 <th className="text-left font-medium text-slate-500 px-4 py-2">Email</th>
-                <th className="text-left font-medium text-slate-500 px-4 py-2">Created</th>
+                <th className="text-left font-medium text-slate-500 px-4 py-2">Role</th>
+                <th className="text-left font-medium text-slate-500 px-4 py-2">Access</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
@@ -197,11 +319,8 @@ export function TestUsersManager({ initialUsers }: { initialUsers: TestUser[] })
                 <tr key={u.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-4 py-2.5 font-medium text-slate-900">{u.full_name}</td>
                   <td className="px-4 py-2.5 text-slate-600">{u.email}</td>
-                  <td className="px-4 py-2.5 text-slate-500">
-                    {new Date(u.created_at).toLocaleDateString('en-AU', {
-                      day: 'numeric', month: 'short', year: 'numeric',
-                    })}
-                  </td>
+                  <td className="px-4 py-2.5 text-slate-600">{formatRoleLabel(u.role)}</td>
+                  <td className="px-4 py-2.5 text-slate-600">{ACCESS_LEVEL_LABELS[u.access_level]}</td>
                   <td className="px-4 py-2.5 text-right">
                     <Button
                       type="button"

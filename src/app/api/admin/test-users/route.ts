@@ -23,7 +23,14 @@ export async function POST(request: Request) {
   const guard = await requireAdmin()
   if (guard.error) return guard.error
 
-  let body: { email?: string; password?: string; full_name?: string }
+  let body: {
+    email?: string
+    password?: string
+    full_name?: string
+    role?: string
+    hourly_rate?: number
+    access_level?: 'staff' | 'project_manager' | 'admin'
+  }
   try {
     body = await request.json()
   } catch {
@@ -33,12 +40,18 @@ export async function POST(request: Request) {
   const email = body.email?.trim().toLowerCase()
   const password = body.password ?? ''
   const fullName = body.full_name?.trim() || (email ? email.split('@')[0] : 'Test User')
+  const role = body.role?.trim() || 'drafting'
+  const hourlyRate = typeof body.hourly_rate === 'number' && body.hourly_rate >= 0 ? body.hourly_rate : 0
+  const accessLevel = body.access_level ?? 'staff'
 
   if (!email || !email.includes('@')) {
     return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
   }
   if (password.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
+  }
+  if (!['staff', 'project_manager', 'admin'].includes(accessLevel)) {
+    return NextResponse.json({ error: 'Invalid access level' }, { status: 400 })
   }
 
   const admin = createAdminClient()
@@ -58,17 +71,23 @@ export async function POST(request: Request) {
   }
 
   // The handle_new_user trigger has already inserted a staff_profiles row.
-  // Mark it as a test user and set the supplied display name.
+  // Update it with the supplied details and flag as a test user.
   const { error: profileErr } = await (admin as any)
     .from('staff_profiles')
-    .update({ is_test_user: true, full_name: fullName })
+    .update({
+      is_test_user: true,
+      full_name: fullName,
+      role,
+      default_hourly_rate: hourlyRate,
+      access_level: accessLevel,
+    })
     .eq('id', created.user.id)
 
   if (profileErr) {
     // Roll back the auth user so we don't leave orphans.
     await admin.auth.admin.deleteUser(created.user.id)
     return NextResponse.json(
-      { error: `Created auth user but failed to flag profile: ${profileErr.message}` },
+      { error: `Created auth user but failed to set up profile: ${profileErr.message}` },
       { status: 500 }
     )
   }
@@ -88,7 +107,7 @@ export async function GET() {
 
   const { data: profiles, error } = await (admin as any)
     .from('staff_profiles')
-    .select('id, email, full_name, created_at')
+    .select('id, email, full_name, role, default_hourly_rate, access_level, created_at')
     .eq('is_test_user', true)
     .order('created_at', { ascending: false })
 
