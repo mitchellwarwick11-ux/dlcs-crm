@@ -19,6 +19,8 @@ import {
   Pencil,
   Mail,
   Trash2,
+  LayoutList,
+  Columns3,
 } from 'lucide-react'
 import { AddItemForm } from './add-item-form'
 import { EditItemForm } from './edit-item-form'
@@ -80,6 +82,14 @@ interface Props {
 }
 
 type FilterTab = 'active' | 'completed' | 'all'
+type ViewMode = 'list' | 'board'
+
+const BOARD_COLUMNS: { status: TaskStatus; label: string; accent: string }[] = [
+  { status: 'not_started', label: 'Not Started', accent: 'border-t-slate-400' },
+  { status: 'in_progress', label: 'In Progress', accent: 'border-t-blue-500' },
+  { status: 'on_hold',     label: 'On Hold',     accent: 'border-t-amber-500' },
+  { status: 'completed',   label: 'Completed',   accent: 'border-t-green-500' },
+]
 
 const ACTIVE_STATUSES = ['not_started', 'in_progress', 'on_hold']
 const ACTIVE_PROJECT_STATUSES = ['active', 'on_hold']
@@ -95,6 +105,7 @@ export function MyWorkBoard({
   const router = useRouter()
   const [items, setItems] = useState(initialItems)
   const [filter, setFilter] = useState<FilterTab>('active')
+  const [view, setView] = useState<ViewMode>('list')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedTimeLogId, setExpandedTimeLogId] = useState<string | null>(null)
   const [showAddItem, setShowAddItem] = useState(false)
@@ -103,13 +114,18 @@ export function MyWorkBoard({
   const [collapsedJobs, setCollapsedJobs] = useState<Set<string>>(new Set())
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set())
 
-  // Filter items
+  // Filter items (status filter only applies to list view; board uses columns instead)
   const filtered = items.filter(it => {
-    if (filter === 'active') {
-      if (!ACTIVE_STATUSES.includes(it.status)) return false
+    if (view === 'list') {
+      if (filter === 'active') {
+        if (!ACTIVE_STATUSES.includes(it.status)) return false
+        if (!ACTIVE_PROJECT_STATUSES.includes(it.projectStatus)) return false
+      } else if (filter === 'completed') {
+        if (it.status !== 'completed') return false
+      }
+    } else {
+      // Board: always restrict to active projects so cancelled/archived projects don't clutter
       if (!ACTIVE_PROJECT_STATUSES.includes(it.projectStatus)) return false
-    } else if (filter === 'completed') {
-      if (it.status !== 'completed') return false
     }
 
     if (searchQuery.trim()) {
@@ -290,28 +306,51 @@ export function MyWorkBoard({
         </div>
       </div>
 
-      {/* Filters + search */}
+      {/* View toggle + filters + search */}
       <div className="flex items-center gap-4 flex-wrap">
         <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-          {filterTabs.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                filter === tab.key
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {tab.label}
-              {tab.count !== undefined && (
-                <span className={`ml-1.5 text-xs ${filter === tab.key ? 'text-slate-300' : 'text-slate-400'}`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
+          <button
+            onClick={() => setView('list')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
+              view === 'list' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+            title="List view"
+          >
+            <LayoutList className="h-4 w-4" /> List
+          </button>
+          <button
+            onClick={() => setView('board')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-slate-200 ${
+              view === 'board' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+            title="Board view"
+          >
+            <Columns3 className="h-4 w-4" /> Board
+          </button>
         </div>
+
+        {view === 'list' && (
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+            {filterTabs.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setFilter(tab.key)}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  filter === tab.key
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {tab.label}
+                {tab.count !== undefined && (
+                  <span className={`ml-1.5 text-xs ${filter === tab.key ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
@@ -323,8 +362,18 @@ export function MyWorkBoard({
         </div>
       </div>
 
-      {/* Hierarchy */}
-      {jobGroups.length === 0 ? (
+      {/* Board view */}
+      {view === 'board' && (
+        <BoardView
+          items={filtered}
+          onChangeStatus={(itemId, current, next) => changeStatus(itemId, current, next)}
+          onEdit={setEditingItem}
+          onDelete={(it) => deleteItem(it.itemId, it.title)}
+        />
+      )}
+
+      {/* List view: hierarchy */}
+      {view === 'list' && jobGroups.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-white p-12 text-center">
           <p className="text-slate-500 text-sm">
             {filter === 'active' ? 'No active items assigned to you.' : 'No items found.'}
@@ -334,7 +383,7 @@ export function MyWorkBoard({
             Add your first Item
           </Button>
         </div>
-      ) : (
+      ) : view === 'list' ? (
         <div className="space-y-4">
           {jobGroups.map(job => {
             const isJobCollapsed = collapsedJobs.has(job.jobId)
@@ -426,7 +475,7 @@ export function MyWorkBoard({
             )
           })}
         </div>
-      )}
+      ) : null}
 
       {/* Add Item slide-over */}
       <AddItemForm
@@ -568,5 +617,189 @@ function ItemRow({
         </div>
       )}
     </>
+  )
+}
+
+// ─── Board (Trello-style) view ────────────────────────────────────────────
+function BoardView({
+  items,
+  onChangeStatus,
+  onEdit,
+  onDelete,
+}: {
+  items: MyItem[]
+  onChangeStatus: (itemId: string, currentStatus: string, next: TaskStatus) => void
+  onEdit: (item: MyItem) => void
+  onDelete: (item: MyItem) => void
+}) {
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [hoverColumn, setHoverColumn] = useState<TaskStatus | null>(null)
+
+  const itemsByStatus = useMemo(() => {
+    const map = new Map<string, MyItem[]>()
+    for (const col of BOARD_COLUMNS) map.set(col.status, [])
+    for (const it of items) {
+      const bucket = map.get(it.status)
+      if (bucket) bucket.push(it)
+    }
+    // Sort each bucket: overdue first, then by due date asc, then by sortOrder
+    for (const [, list] of map) {
+      list.sort((a, b) => {
+        const aDue = a.dueDate ? parseISO(a.dueDate).getTime() : Number.POSITIVE_INFINITY
+        const bDue = b.dueDate ? parseISO(b.dueDate).getTime() : Number.POSITIVE_INFINITY
+        if (aDue !== bDue) return aDue - bDue
+        return a.sortOrder - b.sortOrder || a.title.localeCompare(b.title)
+      })
+    }
+    return map
+  }, [items])
+
+  function handleDragStart(e: React.DragEvent, item: MyItem) {
+    setDraggingId(item.itemId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', `${item.itemId}|${item.status}`)
+  }
+
+  function handleDrop(e: React.DragEvent, targetStatus: TaskStatus) {
+    e.preventDefault()
+    setHoverColumn(null)
+    setDraggingId(null)
+    const data = e.dataTransfer.getData('text/plain')
+    const [itemId, currentStatus] = data.split('|')
+    if (!itemId || currentStatus === targetStatus) return
+    onChangeStatus(itemId, currentStatus, targetStatus)
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white p-12 text-center">
+        <p className="text-slate-500 text-sm">No items to show on the board.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {BOARD_COLUMNS.map(col => {
+        const list = itemsByStatus.get(col.status) ?? []
+        const isHover = hoverColumn === col.status
+        return (
+          <div
+            key={col.status}
+            onDragOver={(e) => { e.preventDefault(); setHoverColumn(col.status) }}
+            onDragLeave={() => setHoverColumn(prev => prev === col.status ? null : prev)}
+            onDrop={(e) => handleDrop(e, col.status)}
+            className={`flex flex-col rounded-lg border-t-2 ${col.accent} border-x border-b border-slate-200 bg-slate-50/60 transition-colors ${
+              isHover ? 'bg-blue-50/70 ring-2 ring-blue-300' : ''
+            }`}
+          >
+            <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200">
+              <h3 className="text-sm font-semibold text-slate-800">{col.label}</h3>
+              <span className="text-xs text-slate-500 tabular-nums">{list.length}</span>
+            </div>
+            <div className="flex-1 p-2 space-y-2 min-h-[120px]">
+              {list.map(item => (
+                <BoardCard
+                  key={item.itemId}
+                  item={item}
+                  isDragging={draggingId === item.itemId}
+                  onDragStart={(e) => handleDragStart(e, item)}
+                  onDragEnd={() => { setDraggingId(null); setHoverColumn(null) }}
+                  onEdit={() => onEdit(item)}
+                  onDelete={() => onDelete(item)}
+                />
+              ))}
+              {list.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-4">Drop here</p>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function BoardCard({
+  item,
+  isDragging,
+  onDragStart,
+  onDragEnd,
+  onEdit,
+  onDelete,
+}: {
+  item: MyItem
+  isDragging: boolean
+  onDragStart: (e: React.DragEvent) => void
+  onDragEnd: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const isOverdue = item.dueDate
+    && isPast(parseISO(item.dueDate))
+    && ACTIVE_STATUSES.includes(item.status)
+
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`group rounded-md border border-slate-200 bg-white p-2.5 shadow-sm hover:shadow transition-all cursor-grab active:cursor-grabbing ${
+        isDragging ? 'opacity-40' : ''
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <Link
+          href={`/projects/${item.jobNumber}/details`}
+          onClick={e => e.stopPropagation()}
+          className="font-mono text-[11px] font-medium text-slate-500 hover:text-slate-900 hover:underline"
+        >
+          {item.jobNumber}
+        </Link>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={onEdit}
+            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded"
+            title="Edit item"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <Link
+            href={`/projects/${item.jobNumber}/tasks`}
+            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded"
+            title="Go to project tasks"
+            onClick={e => e.stopPropagation()}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+          <button
+            onClick={onDelete}
+            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+            title="Delete item"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <p className="text-sm font-medium text-slate-900 mt-1 leading-snug">{item.title}</p>
+      <p className="text-xs text-slate-500 mt-0.5 truncate">{item.taskTitle}</p>
+
+      {(item.dueDate || item.taskHoursLogged > 0) && (
+        <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+          {item.dueDate ? (
+            <span className={`text-[11px] tabular-nums ${isOverdue ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
+              {format(parseISO(item.dueDate), 'd MMM')}
+            </span>
+          ) : <span />}
+          {item.taskHoursLogged > 0 && (
+            <span className="text-[11px] text-slate-500 tabular-nums flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {item.taskHoursLogged}h
+            </span>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
