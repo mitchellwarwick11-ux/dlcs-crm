@@ -34,6 +34,7 @@ export default async function JobHubPage({
     .from('field_schedule_entries')
     .select(`
       id, date, hours, time_of_day, status, notes,
+      brief_acknowledged_at,
       project_id, task_id,
       projects (
         id, job_number, job_type, site_address, suburb,
@@ -54,7 +55,6 @@ export default async function JobHubPage({
     { data: timeLog },
     { count: photoCount },
     { count: notesCount },
-    { data: brief },
   ] = await Promise.all([
     db.from('jsa_submissions')
       .select('id, submitted_at')
@@ -77,12 +77,10 @@ export default async function JobHubPage({
       .select('id', { count: 'exact', head: true })
       .eq('entry_id', entryId)
       .eq('type', 'fieldbook_note'),
-
-    db.from('job_briefs')
-      .select('id, content')
-      .eq('project_id', entry.project_id)
-      .maybeSingle(),
   ])
+
+  const briefContent: string | null = (entry.notes ?? '').trim() || null
+  const briefAcknowledged = !!entry.brief_acknowledged_at
 
   const proj    = entry.projects
   const task    = entry.project_tasks
@@ -155,8 +153,12 @@ export default async function JobHubPage({
             accentColor="bg-[#F39200]"
             title="Job Brief & Checklists"
             subtitle="Instructions and equipment checklist"
-            status={brief ? 'available' : 'none'}
-            statusLabel={brief ? 'Brief available' : 'No brief provided'}
+            status={briefAcknowledged ? 'done' : (briefContent ? 'available' : 'none')}
+            statusLabel={
+              briefAcknowledged
+                ? 'Acknowledged'
+                : (briefContent ? 'Brief available — please acknowledge' : 'No brief provided — please acknowledge')
+            }
           />
 
           {/* Site Photos */}
@@ -201,17 +203,6 @@ export default async function JobHubPage({
           />
 
         </div>
-
-        {/* Notes from entry */}
-        {entry.notes && (
-          <div className="mt-5 flex gap-3 p-3.5 bg-[#FAF8F3] border border-[#EFEDE6] rounded-xl">
-            <div className="w-[3px] bg-[#F39200] shrink-0 rounded-full" />
-            <div className="flex-1">
-              <p className="text-[10px] font-bold text-[#F39200] tracking-[0.18em] mb-1">PM NOTES</p>
-              <p className="text-sm text-[#4B4B4F] whitespace-pre-wrap leading-relaxed">{entry.notes}</p>
-            </div>
-          </div>
-        )}
 
         {/* Submit button */}
         <div className="mt-6 pb-8">

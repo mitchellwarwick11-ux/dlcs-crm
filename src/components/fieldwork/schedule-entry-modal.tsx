@@ -654,18 +654,21 @@ export function ScheduleEntryModal({
               </div>
             )}
 
-            {/* Notes */}
+            {/* Brief — shown to the field surveyor on the Job Brief screen */}
             <div>
-              <Label htmlFor="se-notes">Notes <span className="text-slate-400 font-normal text-xs">(optional)</span></Label>
+              <Label htmlFor="se-notes">Brief <span className="text-slate-400 font-normal text-xs">(optional)</span></Label>
               <textarea
                 id="se-notes"
-                rows={2}
+                rows={4}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 disabled={ro}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none disabled:bg-slate-50 disabled:text-slate-500"
-                placeholder="Any additional notes…"
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-y disabled:bg-slate-50 disabled:text-slate-500"
+                placeholder="Instructions for the field surveyor (e.g. site contact, gate code, what to set out)…"
               />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Shown to the field surveyor in the Job Brief section of the Field App.
+              </p>
             </div>
 
             {error && <p className="text-sm text-red-600">{error}</p>}
