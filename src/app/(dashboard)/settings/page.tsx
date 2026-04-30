@@ -78,6 +78,19 @@ export default async function SettingsPage() {
       </div>
 
       <div className="mt-10 pt-8 border-t border-slate-200">
+        <h2 className="text-lg font-semibold text-slate-900 mb-1">Test Users</h2>
+        <p className="text-sm text-slate-500 mb-4">
+          Create temporary logins to demo the app to people. Remove their access in one click when you&apos;re done.
+        </p>
+        <Link
+          href="/settings/test-users"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded hover:bg-slate-700 transition-colors"
+        >
+          Manage Test Users
+        </Link>
+      </div>
+
+      <div className="mt-10 pt-8 border-t border-slate-200">
         <h2 className="text-lg font-semibold text-slate-900 mb-1">Field Schedule Equipment</h2>
         <p className="text-sm text-slate-500 mb-4">
           Equipment and resources available when scheduling fieldwork bookings.
