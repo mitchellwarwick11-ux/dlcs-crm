@@ -6,8 +6,9 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, X, Plus } from 'lucide-react'
+import { Loader2, X, Plus, Mail } from 'lucide-react'
 import type { ActiveProject, ActiveTask, MyItem } from './my-work-board'
+import { stripJobNumberPrefix } from '@/lib/utils/formatters'
 
 interface Props {
   open: boolean
@@ -16,6 +17,7 @@ interface Props {
   tasks: ActiveTask[]
   staffId: string
   onItemAdded: (item: MyItem) => void
+  fromEmail?: boolean
 }
 
 export function AddItemForm({
@@ -25,6 +27,7 @@ export function AddItemForm({
   tasks,
   staffId,
   onItemAdded,
+  fromEmail = false,
 }: Props) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -39,8 +42,9 @@ export function AddItemForm({
 
   // Item fields
   const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
+  const [notes, setNotes] = useState('')
   const [dueDate, setDueDate] = useState('')
+  const [emailBody, setEmailBody] = useState('')
 
   const availableTasks = projectId
     ? tasks.filter(t => t.projectId === projectId)
@@ -54,8 +58,9 @@ export function AddItemForm({
     setTaskId('')
     setNewTaskTitle('')
     setTitle('')
-    setDescription('')
+    setNotes('')
     setDueDate('')
+    setEmailBody('')
     setError(null)
   }
 
@@ -115,13 +120,19 @@ export function AddItemForm({
       })
     }
 
+    // In email mode the pasted email becomes the notes
+    const effectiveNotes = fromEmail
+      ? (emailBody.trim() || notes.trim() || null)
+      : (notes.trim() || null)
+
     // Insert the item
     const { data: newItem, error: itemError } = await db
       .from('task_items')
       .insert({
         task_id: resolvedTaskId,
         title: title.trim(),
-        description: description.trim() || null,
+        description: null,
+        notes: effectiveNotes,
         due_date: dueDate || null,
         status: 'not_started',
         sort_order: 0,
@@ -152,7 +163,8 @@ export function AddItemForm({
     onItemAdded({
       itemId: newItem.id,
       title: title.trim(),
-      description: description.trim() || null,
+      description: null,
+      notes: effectiveNotes,
       status: 'not_started',
       dueDate: dueDate || null,
       sortOrder: 0,
@@ -184,13 +196,35 @@ export function AddItemForm({
       <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900">Add Item</h2>
+          <h2 className="text-lg font-semibold text-slate-900">
+            {fromEmail ? 'New task from email' : 'Add Item'}
+          </h2>
           <button onClick={handleClose} className="p-1.5 text-slate-400 hover:text-slate-700 rounded transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {fromEmail && (
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5 text-slate-500" />
+                Paste email here
+              </Label>
+              <textarea
+                value={emailBody}
+                onChange={e => setEmailBody(e.target.value)}
+                placeholder="Paste the email here — subject, sender, body. It'll be saved to the task's notes."
+                rows={8}
+                autoFocus
+                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 resize-y"
+              />
+              <p className="text-xs text-slate-400">
+                The pasted email becomes the item's notes. Fill in the title and due date below.
+              </p>
+            </div>
+          )}
+
           {/* Step 1: Job */}
           <div className="space-y-1.5">
             <Label>Job <span className="text-red-500">*</span></Label>
@@ -202,7 +236,7 @@ export function AddItemForm({
               <option value="">— Select a job —</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>
-                  {p.jobNumber} — {p.title}
+                  {p.jobNumber} — {stripJobNumberPrefix(p.title, p.jobNumber)}
                 </option>
               ))}
             </select>
@@ -265,7 +299,7 @@ export function AddItemForm({
             <>
               <div className="border-t border-slate-100 pt-5 space-y-4">
                 <div className="space-y-1.5">
-                  <Label>Item Title <span className="text-red-500">*</span></Label>
+                  <Label>Task Description <span className="text-red-500">*</span></Label>
                   <Input
                     value={title}
                     onChange={e => setTitle(e.target.value)}
@@ -283,14 +317,18 @@ export function AddItemForm({
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label>Description</Label>
-                  <Input
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                    placeholder="Optional details…"
-                  />
-                </div>
+                {!fromEmail && (
+                  <div className="space-y-1.5">
+                    <Label>Notes</Label>
+                    <textarea
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                      placeholder="Longer notes, context, links, etc. (optional)"
+                      rows={5}
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 resize-y"
+                    />
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -308,7 +346,7 @@ export function AddItemForm({
             disabled={saving || !projectId || !taskSelected || !title.trim()}
           >
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Add Item
+            {fromEmail ? 'Create task' : 'Add Item'}
           </Button>
         </div>
       </div>

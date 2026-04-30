@@ -55,25 +55,22 @@ export default async function SafetyPage({
   const roleLabel = ROLE_LABELS[staffProfile.role] ?? staffProfile.role
 
   return (
-    <div className="flex flex-col flex-1">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-4 pt-safe-top">
+    <div className="flex flex-col flex-1 bg-[#F5F4F1]">
+      {/* Header — charcoal */}
+      <div className="bg-[#2F2F33] px-4 pt-safe-top">
         <div className="flex items-center gap-2 py-3">
           <Link
             href={`/field/${entryId}`}
-            className="p-1.5 -ml-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+            className="p-1.5 -ml-1.5 rounded-lg text-[#BDBDC0] hover:bg-[#45454B] transition-colors"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-6 w-6" />
           </Link>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <ShieldCheck className="h-5 w-5 text-red-500 shrink-0" />
-            <div>
-              <p className="text-xs text-slate-500 font-medium">{jobLabel}</p>
-              <h1 className="text-base font-bold text-slate-900">Risk Assessment</h1>
-            </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-[#F39200] font-bold tracking-[0.18em]">{jobLabel}</p>
+            <h1 className="text-base font-bold text-white">Risk Assessment</h1>
           </div>
           {existing && (
-            <span className="text-xs bg-green-100 text-green-700 font-medium px-2 py-1 rounded-full">
+            <span className="text-xs bg-[#E7F3EC] text-[#1F7A3F] font-semibold px-2.5 py-1 rounded-full">
               Re-submitting
             </span>
           )}

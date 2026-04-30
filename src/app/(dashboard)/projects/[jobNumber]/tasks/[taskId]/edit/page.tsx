@@ -48,6 +48,10 @@ export default async function EditTaskPage({
           quoted_amount: task.quoted_amount ?? null,
           due_date: task.due_date ?? null,
           status: task.status,
+          approval_prepared_by: task.approval_prepared_by ?? null,
+          approval_approved_by: task.approval_approved_by ?? '',
+          approval_method: task.approval_method ?? null,
+          approval_date: task.approval_date ?? null,
         }}
       />
     </div>

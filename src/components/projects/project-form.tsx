@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { NewClientModal } from '@/components/clients/new-client-modal'
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete'
+import { formatAUPhone } from '@/lib/utils/formatters'
 
 interface QuotePrefill {
   quoteId: string
@@ -27,8 +28,14 @@ interface QuotePrefill {
   contactEmail: string | null
   siteAddress: string | null
   suburb: string | null
+  state: string | null
+  postcode: string | null
   lotNumber: string | null
+  sectionNumber: string | null
   planNumber: string | null
+  lga: string | null
+  parish: string | null
+  county: string | null
   jobType: string | null
   lineItems: { description: string; amount: number }[]
 }
@@ -49,6 +56,19 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
   const [newCustomTask, setNewCustomTask] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [siteCoords, setSiteCoords] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
+  const [lotLookupInProgress, setLotLookupInProgress] = useState(false)
+
+  // Warn before navigating away while lot/section/plan are still being fetched
+  useEffect(() => {
+    if (!lotLookupInProgress) return
+    function beforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => window.removeEventListener('beforeunload', beforeUnload)
+  }, [lotLookupInProgress])
 
   const { register, handleSubmit, watch, setValue } = useForm<ProjectFormValues>({
     resolver: zodResolver(projectSchema),
@@ -62,14 +82,16 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
       contact_name: quotePrefill?.contactName  ?? '',
       contact_phone: quotePrefill?.contactPhone ?? '',
       contact_email: quotePrefill?.contactEmail ?? '',
-      site_address: quotePrefill?.siteAddress  ?? '',
-      suburb:       quotePrefill?.suburb       ?? '',
-      lot_number:     quotePrefill?.lotNumber    ?? '',
-      section_number: '',
-      plan_number:    quotePrefill?.planNumber   ?? '',
-      lga:            '',
-      parish:         '',
-      county:         '',
+      site_address: quotePrefill?.siteAddress   ?? '',
+      suburb:       quotePrefill?.suburb        ?? '',
+      state:        quotePrefill?.state         ?? '',
+      postcode:     quotePrefill?.postcode      ?? '',
+      lot_number:     quotePrefill?.lotNumber      ?? '',
+      section_number: quotePrefill?.sectionNumber ?? '',
+      plan_number:    quotePrefill?.planNumber     ?? '',
+      lga:            quotePrefill?.lga            ?? '',
+      parish:         quotePrefill?.parish         ?? '',
+      county:         quotePrefill?.county         ?? '',
     },
   })
 
@@ -116,11 +138,6 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
   }
 
   async function onSubmit(values: ProjectFormValues) {
-    // When creating from a quote, tasks come from the quote line items — no manual selection required
-    if (!quotePrefill && selectedTaskIds.length === 0 && customTasks.length === 0) {
-      setError('Please select or add at least one task.')
-      return
-    }
     setSubmitting(true)
     setError(null)
     const supabase = createClient()
@@ -135,9 +152,7 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
     const jobNumber = jobNumberData as string
     const year = new Date().getFullYear()
     const sequence = parseInt(jobNumber.slice(2))
-    const autoTitle = values.suburb?.trim()
-      ? `${jobNumber} - ${values.suburb.trim()}`
-      : jobNumber
+    const autoTitle = values.suburb?.trim() || jobNumber
 
     const db = supabase as any
 
@@ -155,12 +170,16 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
         description: values.description || null,
         site_address: values.site_address || null,
         suburb: values.suburb || null,
+        state: values.state || null,
+        postcode: values.postcode || null,
         lot_number: values.lot_number || null,
         section_number: values.section_number || null,
         plan_number: values.plan_number || null,
         lga: values.lga || null,
         parish: values.parish || null,
         county: values.county || null,
+        site_lat: siteCoords.lat,
+        site_lng: siteCoords.lng,
         purchase_order_number: values.purchase_order_number || null,
         is_billable: values.is_billable,
         created_by: userId,
@@ -196,10 +215,11 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
     ]
 
     if (quotePrefill) {
-      // Create one task per line item (Fixed Fee)
+      // Create one task per line item (Fixed Fee), linked back to the source quote
       if (quotePrefill.lineItems.length > 0) {
         const quoteTaskInserts = quotePrefill.lineItems.map((item, i) => ({
           project_id:    project.id,
+          quote_id:      quotePrefill.quoteId,
           title:         item.description,
           fee_type:      'fixed',
           quoted_amount: item.amount,
@@ -233,7 +253,7 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
           <p className="text-sm text-muted-foreground">
             Job number is assigned automatically. Title will be set to{' '}
             <span className="font-medium text-slate-700">
-              {suburb?.trim() ? `[Job No] - ${suburb.trim()}` : '[Job No]'}
+              {suburb?.trim() ? suburb.trim() : '[Job No]'}
             </span>.
           </p>
         </CardHeader>
@@ -246,7 +266,7 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="job_manager_id">Job Manager</Label>
+            <Label htmlFor="job_manager_id">Project Manager</Label>
             <select {...register('job_manager_id')} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
               <option value="">— Select manager —</option>
               {staff.map(s => (
@@ -307,7 +327,15 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
           </div>
           <div className="space-y-1">
             <Label htmlFor="contact_phone">Phone</Label>
-            <Input id="contact_phone" {...register('contact_phone')} placeholder="e.g. 0412 345 678" />
+            <Input
+              id="contact_phone"
+              placeholder="e.g. 0412 345 678"
+              {...register('contact_phone')}
+              onChange={(e) => {
+                e.target.value = formatAUPhone(e.target.value)
+                register('contact_phone').onChange(e)
+              }}
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="contact_email">Email</Label>
@@ -320,67 +348,96 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
       <Card>
         <CardHeader>
           <CardTitle>Site Details</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Start typing the site address to search — select a suggestion to auto-fill the address and suburb.
-          </p>
         </CardHeader>
         <CardContent className="space-y-4">
 
-          {/* Address autocomplete — fills site_address + suburb */}
           <div className="space-y-1">
             <Label htmlFor="site_address">Site Address</Label>
             <AddressAutocomplete
               id="site_address"
               value={watch('site_address') ?? ''}
               onChange={val => setValue('site_address', val)}
-              onSelect={result => {
-                setValue('site_address', result.streetAddress)
-                if (result.suburb)    setValue('suburb', result.suburb)
-                if (result.lot)       setValue('lot_number', result.lot)
-                if (result.section)   setValue('section_number', result.section)
-                if (result.planLabel) setValue('plan_number', result.planLabel)
-                if (result.lga)       setValue('lga', result.lga)
-                if (result.parish)    setValue('parish', result.parish)
-                if (result.county)    setValue('county', result.county)
+              onLotLookupStart={() => setLotLookupInProgress(true)}
+              onLotLookupEnd={() => setLotLookupInProgress(false)}
+              onSelect={pick => {
+                const opts = { shouldDirty: true, shouldTouch: true }
+                setValue('site_address',    pick.streetAddress,      opts)
+                setValue('suburb',          pick.suburb || '',       opts)
+                setValue('state',           pick.state    || '',     opts)
+                setValue('postcode',        pick.postcode || '',     opts)
+                setValue('lga',             pick.lga    || '',       opts)
+                setValue('parish',          pick.parish || '',       opts)
+                setValue('county',          pick.county || '',       opts)
+                if (pick.lat !== null && pick.lng !== null) {
+                  setSiteCoords({ lat: pick.lat, lng: pick.lng })
+                }
+                // Lot / section / plan come in a second call ~15s later. Only
+                // overwrite when we have real values so the placeholder '-' /
+                // blank doesn't flash back in over a filled field.
+                if (pick.lot)     setValue('lot_number',     pick.lot,       opts)
+                if (pick.plan)    setValue('plan_number',    pick.plan,      opts)
+                if (pick.section) setValue('section_number', pick.section,   opts)
+                else              setValue('section_number', '-',            opts)
               }}
-              placeholder="e.g. 123 Smith Street"
+              placeholder="Start typing a NSW address…"
             />
+            <p className="text-xs text-slate-500">Suggestions pulled from NSW Spatial Services. Select one to auto-fill suburb, lot, plan, and LGA.</p>
           </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="suburb">Suburb</Label>
-            <Input id="suburb" {...register('suburb')} placeholder="Auto-filled from address, or type manually" />
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_160px] gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="suburb">Suburb</Label>
+              <Input id="suburb" {...register('suburb')} placeholder="Auto-filled from address, or type manually" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="state">State</Label>
+              <Input id="state" {...register('state')} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="postcode">Postcode</Label>
+              <Input id="postcode" {...register('postcode')} />
+            </div>
           </div>
 
-          {/* Lot / Section / Plan — optional reference fields */}
+          {lotLookupInProgress && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <Loader2 className="h-3.5 w-3.5 mt-0.5 shrink-0 animate-spin" />
+              <div>
+                <p className="font-medium">Looking up Lot, Section, Plan, LGA, Parish and County…</p>
+                <p className="text-amber-700">This can take up to 15 seconds. Please don't leave the page — the fields below will fill automatically.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Lot / Section / Plan — auto-filled from address */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
             <div className="space-y-1">
-              <Label htmlFor="lot_number" className="text-slate-500">Lot Number <span className="font-normal">(optional)</span></Label>
-              <Input id="lot_number" {...register('lot_number')} placeholder="e.g. 5" />
+              <Label htmlFor="lot_number" className="text-slate-500">Lot Number</Label>
+              <Input id="lot_number" {...register('lot_number')} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="section_number" className="text-slate-500">Section Number <span className="font-normal">(optional)</span></Label>
-              <Input id="section_number" {...register('section_number')} placeholder="e.g. 12" />
+              <Label htmlFor="section_number" className="text-slate-500">Section Number</Label>
+              <Input id="section_number" {...register('section_number')} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="plan_number" className="text-slate-500">Plan Number <span className="font-normal">(optional)</span></Label>
-              <Input id="plan_number" {...register('plan_number')} placeholder="e.g. DP123456" />
+              <Label htmlFor="plan_number" className="text-slate-500">Plan Number</Label>
+              <Input id="plan_number" {...register('plan_number')} />
             </div>
           </div>
 
-          {/* LGA / Parish / County — cadastral */}
+          {/* LGA / Parish / County — auto-filled from address */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <Label htmlFor="lga" className="text-slate-500">LGA <span className="font-normal">(optional)</span></Label>
-              <Input id="lga" {...register('lga')} placeholder="e.g. Lake Macquarie" />
+              <Label htmlFor="lga" className="text-slate-500">LGA</Label>
+              <Input id="lga" {...register('lga')} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="parish" className="text-slate-500">Parish <span className="font-normal">(optional)</span></Label>
-              <Input id="parish" {...register('parish')} placeholder="e.g. Kahibah" />
+              <Label htmlFor="parish" className="text-slate-500">Parish</Label>
+              <Input id="parish" {...register('parish')} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="county" className="text-slate-500">County <span className="font-normal">(optional)</span></Label>
-              <Input id="county" {...register('county')} placeholder="e.g. Northumberland" />
+              <Label htmlFor="county" className="text-slate-500">County</Label>
+              <Input id="county" {...register('county')} />
             </div>
           </div>
 
@@ -394,7 +451,7 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
           <p className="text-sm text-muted-foreground">
             {quotePrefill
               ? 'Tasks below are carried over from the quote line items and will be created as Fixed Fee tasks.'
-              : 'Select the tasks that make up this job.'}
+              : 'Select the tasks that make up this job. You can also add tasks later.'}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -447,18 +504,15 @@ export function ProjectForm({ taskDefinitions, clients: initialClients, staff, u
             </>
           )}
 
-          {!quotePrefill && selectedTaskIds.length === 0 && customTasks.length === 0 && (
-            <p className="text-xs text-red-500">Select or add at least one task.</p>
-          )}
         </CardContent>
       </Card>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="flex gap-3">
-        <Button type="submit" disabled={submitting}>
-          {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          {submitting ? 'Creating…' : 'Create Job'}
+        <Button type="submit" disabled={submitting || lotLookupInProgress}>
+          {(submitting || lotLookupInProgress) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+          {submitting ? 'Creating…' : lotLookupInProgress ? 'Waiting for address details…' : 'Create Job'}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
       </div>

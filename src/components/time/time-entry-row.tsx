@@ -3,11 +3,12 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate, formatHours } from '@/lib/utils/formatters'
+import { formatCurrency, formatDate, formatHours, stripJobNumberPrefix } from '@/lib/utils/formatters'
 import { DeleteTimeEntryButton } from './delete-time-entry-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Pencil, X, Check, Loader2, ArrowRightLeft, Receipt } from 'lucide-react'
+import Link from 'next/link'
 
 export interface TimeEntryData {
   id: string
@@ -18,6 +19,8 @@ export interface TimeEntryData {
   rate_at_time: number
   invoice_item_id: string | null
   invoice_number?: string | null
+  is_variation?: boolean
+  acting_role?: string | null
   task_id: string | null
   staff_id: string
   project_id: string
@@ -135,7 +138,7 @@ export function TimeEntryRow({ entry, staff, tasks, variant }: TimeEntryRowProps
                 {projects
                   .filter(p => p.job_number !== entry.job_number && p.job_number !== entry.projects?.job_number)
                   .map(p => (
-                    <option key={p.id} value={p.id}>{p.job_number} — {p.title}</option>
+                    <option key={p.id} value={p.id}>{p.job_number} — {stripJobNumberPrefix(p.title, p.job_number)}</option>
                   ))}
               </select>
             )}
@@ -243,11 +246,27 @@ export function TimeEntryRow({ entry, staff, tasks, variant }: TimeEntryRowProps
     return (
       <tr className="hover:bg-slate-50 transition-colors">
         <td className="px-4 py-2.5">
-          <span className="font-mono text-xs font-medium text-slate-700">{entry.projects?.job_number}</span>
-          <span className="text-slate-500 ml-1.5 text-xs truncate">{entry.projects?.title}</span>
+          {entry.projects?.job_number ? (
+            <Link
+              href={`/projects/${entry.projects.job_number}`}
+              className="text-slate-700 text-xs truncate hover:text-blue-600 hover:underline"
+            >
+              {entry.projects.title}
+            </Link>
+          ) : (
+            <span className="text-slate-700 text-xs truncate">{entry.projects?.title}</span>
+          )}
         </td>
         <td className="px-4 py-2.5 text-slate-600 text-xs truncate">{entry.staff_profiles?.full_name}</td>
-        <td className="px-4 py-2.5 text-slate-600 text-xs truncate">{entry.project_tasks?.title ?? <span className="text-slate-300">—</span>}</td>
+        <td className="px-4 py-2.5 text-slate-600 text-xs truncate">
+          {entry.is_variation && (
+            <span
+              className="inline-flex items-center justify-center w-4 h-4 mr-1.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 align-middle"
+              title="Variation to fixed fee"
+            >V</span>
+          )}
+          {entry.project_tasks?.title ?? <span className="text-slate-300">—</span>}
+        </td>
         <td className="px-4 py-2.5 text-slate-400 text-xs truncate">{entry.description ?? <span className="text-slate-300">—</span>}</td>
         <td className="px-4 py-2.5 text-right font-medium text-slate-800 text-xs whitespace-nowrap">{formatHours(entry.hours)}</td>
         <td className="px-4 py-2.5 text-center">
@@ -262,15 +281,31 @@ export function TimeEntryRow({ entry, staff, tasks, variant }: TimeEntryRowProps
 
   // variant === 'job'
   return (
-    <tr className="hover:bg-slate-50 transition-colors">
+    <tr className={`transition-colors ${invoiced ? 'bg-emerald-50 text-slate-500 hover:bg-emerald-100' : 'hover:bg-slate-50'}`}>
       <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{formatDate(entry.date)}</td>
       <td className="px-4 py-3 whitespace-nowrap">
         <p className="text-slate-800 font-medium text-sm">{entry.staff_profiles?.full_name ?? '—'}</p>
-        {entry.staff_profiles?.role && (
-          <p className="text-xs text-slate-400 capitalize">{entry.staff_profiles.role.replace(/_/g, ' ')}</p>
-        )}
+        {(() => {
+          const displayRole = entry.acting_role ?? entry.staff_profiles?.role
+          if (!displayRole) return null
+          const isOverride = !!entry.acting_role && entry.acting_role !== entry.staff_profiles?.role
+          return (
+            <p className={`text-xs capitalize ${isOverride ? 'text-amber-700 font-medium' : 'text-slate-400'}`}
+               title={isOverride ? `Acting role (default: ${entry.staff_profiles?.role?.replace(/_/g, ' ')})` : undefined}>
+              {displayRole.replace(/_/g, ' ')}{isOverride ? ' *' : ''}
+            </p>
+          )
+        })()}
       </td>
-      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{entry.project_tasks?.title ?? <span className="text-slate-400">—</span>}</td>
+      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+        {entry.is_variation && (
+          <span
+            className="inline-flex items-center justify-center w-4 h-4 mr-1.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 align-middle"
+            title="Variation to fixed fee"
+          >V</span>
+        )}
+        {entry.project_tasks?.title ?? <span className="text-slate-400">—</span>}
+      </td>
       <td className="px-4 py-3 text-slate-500 max-w-xs truncate">{entry.description ?? <span className="text-slate-300">—</span>}</td>
       <td className="px-4 py-3 text-right text-slate-800 font-medium whitespace-nowrap">{formatHours(entry.hours)}</td>
       <td className="px-4 py-3 text-right text-slate-500 whitespace-nowrap">{formatCurrency(entry.rate_at_time)}/h</td>

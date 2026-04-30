@@ -2,8 +2,6 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatDate } from '@/lib/utils/formatters'
-import { USER_ROLES } from '@/lib/constants/roles'
-import type { UserRole } from '@/types/database'
 import { JobStaffRatesPanel } from '@/components/projects/job-staff-rates-panel'
 
 function InfoRow({ label, value }: { label: string; value?: string | null }) {
@@ -45,13 +43,13 @@ export default async function ProjectDetailsPage({
   const manager = p.job_manager
   const contacts = (p.project_contacts as any[]) ?? []
 
-  const [{ data: activeStaff }, { data: staffRateOverrides }] = await Promise.all([
-    db.from('staff_profiles')
-      .select('id, full_name, role, default_hourly_rate')
+  const [{ data: roleRates }, { data: roleRateOverrides }] = await Promise.all([
+    db.from('role_rates')
+      .select('role_key, label, hourly_rate, sort_order, is_active')
       .eq('is_active', true)
-      .order('full_name'),
-    db.from('project_staff_rates')
-      .select('id, staff_id, hourly_rate')
+      .order('sort_order'),
+    db.from('project_role_rates')
+      .select('id, role_key, hourly_rate')
       .eq('project_id', p.id),
   ])
 
@@ -72,7 +70,7 @@ export default async function ProjectDetailsPage({
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4">
           <InfoRow label="Job Number" value={project.job_number} />
           <InfoRow label="Created" value={formatDate(project.created_at)} />
-          <InfoRow label="Job Manager" value={manager ? `${manager.full_name} (${USER_ROLES[manager.role as UserRole]})` : null} />
+          <InfoRow label="Project Manager" value={manager?.full_name ?? '—'} />
           <InfoRow label="Site Address" value={[project.site_address, project.suburb].filter(Boolean).join(', ')} />
           <InfoRow label="Lot Number" value={project.lot_number} />
           <InfoRow label="Section Number" value={project.section_number} />
@@ -151,19 +149,27 @@ export default async function ProjectDetailsPage({
         </Card>
       )}
 
-      {/* Staff Rates */}
+      {/* Role Rates */}
       <Card>
         <CardHeader>
-          <CardTitle>Staff Rates</CardTitle>
+          <CardTitle>Role Rates</CardTitle>
           <p className="text-sm text-slate-500 mt-0.5">
-            Job-specific hourly rate overrides. Leave blank to use the standard rate from Settings.
+            Job-specific hourly rate overrides by role. Leave blank to use the standard Role Hourly Rates from Settings.
           </p>
         </CardHeader>
         <CardContent>
           <JobStaffRatesPanel
             projectId={p.id}
-            staff={activeStaff ?? []}
-            overrides={staffRateOverrides ?? []}
+            roleRates={(roleRates ?? []).map((r: any) => ({
+              role_key: r.role_key,
+              label: r.label,
+              hourly_rate: Number(r.hourly_rate),
+            }))}
+            overrides={(roleRateOverrides ?? []).map((o: any) => ({
+              id: o.id,
+              role_key: o.role_key,
+              hourly_rate: Number(o.hourly_rate),
+            }))}
           />
         </CardContent>
       </Card>

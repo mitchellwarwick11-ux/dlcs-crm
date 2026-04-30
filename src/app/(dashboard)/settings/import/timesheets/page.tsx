@@ -12,6 +12,7 @@ const FIELDS: FieldDef[] = [
   { key: 'description', label: 'Description',  required: false, description: 'Notes about the work done',              example: 'Field survey work' },
   { key: 'is_billable', label: 'Billable',     required: false, description: 'true or false — defaults to job setting', example: 'true' },
   { key: 'rate',        label: 'Hourly Rate',  required: false, description: 'If blank, uses staff default rate',      example: '145' },
+  { key: 'role',        label: 'Acting Role',  required: false, description: 'role_key from Settings > Roles. Blank = staff default.', example: 'field_surveyor' },
 ]
 
 const MONTH_MAP: Record<string, string> = {
@@ -86,11 +87,24 @@ async function importTimesheetRow(row: Record<string, string>): Promise<ImportRo
   // Find staff
   const { data: staffList } = await db
     .from('staff_profiles')
-    .select('id, default_hourly_rate')
+    .select('id, default_hourly_rate, role')
     .ilike('full_name', staffName)
     .limit(1)
   const staff = staffList?.[0]
   if (!staff) return { success: false, message: `Staff not found: "${staffName}"` }
+
+  // Optional acting role — must exist in role_rates
+  const rawRole = row.role?.trim()
+  let actingRole: string | null = null
+  if (rawRole) {
+    const { data: roleRow } = await db
+      .from('role_rates')
+      .select('role_key')
+      .eq('role_key', rawRole)
+      .maybeSingle()
+    if (!roleRow) return { success: false, message: `Unknown role: "${rawRole}" — must match a role_key in Settings > Roles` }
+    actingRole = rawRole !== staff.role ? rawRole : null
+  }
 
   // Find task (optional)
   let taskId: string | null = null
@@ -120,6 +134,7 @@ async function importTimesheetRow(row: Record<string, string>): Promise<ImportRo
     description:   row.description?.trim() || null,
     is_billable:   isBillable,
     rate_at_time:  rate,
+    acting_role:   actingRole,
   })
 
   if (error) return { success: false, message: `Failed: ${error.message}` }

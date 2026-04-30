@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, X, CalendarDays, ChevronDown } from 'lucide-react'
+import { Loader2, X, CalendarDays, ChevronDown, History, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { format, parseISO } from 'date-fns'
 import type { ScheduleEntryFull, FieldScheduleStatus } from '@/types/database'
+import { ScheduleAvailabilityCalendar } from './schedule-availability-calendar'
+import { stripJobNumberPrefix } from '@/lib/utils/formatters'
 
 interface StaffOption     { id: string; full_name: string; role?: string }
 interface EquipmentOption { id: string; label: string }
@@ -28,6 +30,8 @@ interface Props {
   onOpenChange: (open: boolean) => void
   entry: ScheduleEntryFull | null
   prefillDate: string
+  prefillProjectId?: string
+  prefillTaskId?: string
   projects: ProjectOption[]
   allTasks: TaskOption[]
   fieldSurveyors: StaffOption[]
@@ -158,14 +162,15 @@ function EquipmentRow({
   )
 }
 
-// AM / PM / Any toggle group
+// AM / PM / Any toggle group. `null` here = nothing chosen yet (validation will block save).
+type TimeOfDayChoice = 'am' | 'pm' | 'any'
 function TimeOfDayToggle({
   value,
   onChange,
   disabled,
 }: {
-  value: 'am' | 'pm' | null
-  onChange: (v: 'am' | 'pm' | null) => void
+  value: TimeOfDayChoice | null
+  onChange: (v: TimeOfDayChoice) => void
   disabled?: boolean
 }) {
   const base    = 'px-3 py-1.5 text-xs font-medium transition-colors'
@@ -176,7 +181,7 @@ function TimeOfDayToggle({
     <div className={`inline-flex rounded-md border border-slate-300 overflow-hidden ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
       <button type="button" onClick={() => onChange('am')}  className={`${base} ${value === 'am'  ? active : inactive}`}>AM</button>
       <button type="button" onClick={() => onChange('pm')}  className={`${base} border-l border-slate-300 ${value === 'pm'  ? active : inactive}`}>PM</button>
-      <button type="button" onClick={() => onChange(null)}  className={`${base} border-l border-slate-300 ${value === null  ? 'bg-slate-100 text-slate-600' : inactive}`}>Any</button>
+      <button type="button" onClick={() => onChange('any')} className={`${base} border-l border-slate-300 ${value === 'any' ? active : inactive}`}>Any</button>
     </div>
   )
 }
@@ -186,14 +191,18 @@ export function ScheduleEntryModal({
   onOpenChange,
   entry,
   prefillDate,
+  prefillProjectId,
+  prefillTaskId,
   projects,
   allTasks,
+  fieldSurveyors,
   officeSurveyors,
   equipment,
   allStaff,
   allEntries,
   canEdit = true,
 }: Props) {
+  const dailyCapacity = Math.max(1, fieldSurveyors.length) * 8
   const router  = useRouter()
   const isEdit  = entry !== null
 
@@ -202,13 +211,18 @@ export function ScheduleEntryModal({
   const [taskId,        setTaskId]        = useState('')
   const [officeSurvId,  setOfficeSurvId]  = useState('')
   const [hours,         setHours]         = useState('')
-  const [timeOfDay,     setTimeOfDay]     = useState<'am' | 'pm' | null>(null)
+  const [timeOfDay,     setTimeOfDay]     = useState<TimeOfDayChoice | null>(null)
   const [status,        setStatus]        = useState<FieldScheduleStatus>('scheduled')
   const [notes,         setNotes]         = useState('')
   const [surveyorIds,   setSurveyorIds]   = useState<string[]>([])
   const [resourceIds,   setResourceIds]   = useState<string[]>([])
   const [saving,        setSaving]        = useState(false)
   const [error,         setError]         = useState<string | null>(null)
+  const [prevVisits,    setPrevVisits]    = useState<{ staff_id: string; full_name: string; last_date: string; visit_count: number }[]>([])
+  const [prevLoading,   setPrevLoading]   = useState(false)
+  const [copyOpen,      setCopyOpen]      = useState(false)
+  const [copyDate,      setCopyDate]      = useState('')
+  const [copying,       setCopying]       = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -218,15 +232,15 @@ export function ScheduleEntryModal({
       setTaskId(entry.task_id ?? '')
       setOfficeSurvId(entry.office_surveyor_id ?? '')
       setHours(entry.hours != null ? String(entry.hours) : '')
-      setTimeOfDay(entry.time_of_day ?? null)
+      setTimeOfDay(entry.time_of_day ?? 'any')
       setStatus(entry.status)
       setNotes(entry.notes ?? '')
       setSurveyorIds(entry.field_surveyors.map(s => s.id))
       setResourceIds(entry.resources.map(r => r.id))
     } else {
       setDate(prefillDate)
-      setProjectId('')
-      setTaskId('')
+      setProjectId(prefillProjectId ?? '')
+      setTaskId(prefillTaskId ?? '')
       setOfficeSurvId('')
       setHours('')
       setTimeOfDay(null)
@@ -236,7 +250,48 @@ export function ScheduleEntryModal({
       setResourceIds([])
     }
     setError(null)
-  }, [open, entry, prefillDate, isEdit])
+    setCopyOpen(false)
+    setCopyDate('')
+  }, [open, entry, prefillDate, prefillProjectId, prefillTaskId, isEdit])
+
+  // Load history of field surveyors who've logged time on this project
+  useEffect(() => {
+    if (!open || !projectId) { setPrevVisits([]); return }
+    let cancelled = false
+    ;(async () => {
+      setPrevLoading(true)
+      const db = createClient() as any
+      const today = format(new Date(), 'yyyy-MM-dd')
+      const { data, error: qErr } = await db
+        .from('time_entries')
+        .select('date, staff_id, staff_profiles!time_entries_staff_id_fkey ( id, full_name, role )')
+        .eq('project_id', projectId)
+        .lt('date', today)
+        .order('date', { ascending: false })
+        .limit(2000)
+      if (cancelled) return
+      if (qErr) console.error('[previous site visits] query error:', qErr)
+
+      const byStaff = new Map<string, { staff_id: string; full_name: string; last_date: string; dates: Set<string> }>()
+      for (const row of (data ?? []) as any[]) {
+        const sp = row.staff_profiles
+        if (!sp || sp.role !== 'field_surveyor') continue
+        const existing = byStaff.get(sp.id)
+        if (!existing) {
+          byStaff.set(sp.id, { staff_id: sp.id, full_name: sp.full_name, last_date: row.date, dates: new Set([row.date]) })
+        } else {
+          existing.dates.add(row.date)
+          if (row.date > existing.last_date) existing.last_date = row.date
+        }
+      }
+      const list = Array.from(byStaff.values())
+        .map(v => ({ staff_id: v.staff_id, full_name: v.full_name, last_date: v.last_date, visit_count: v.dates.size }))
+        .sort((a, b) => b.last_date.localeCompare(a.last_date))
+      setPrevVisits(list)
+      setPrevLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [open, projectId])
 
   const tasksForProject  = allTasks.filter(t => t.project_id === projectId)
   const selectedProject  = projects.find(p => p.id === projectId)
@@ -253,6 +308,15 @@ export function ScheduleEntryModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!projectId) { setError('Select a project.'); return }
+    const hoursNum = parseFloat(hours)
+    if (!hours.trim() || isNaN(hoursNum) || hoursNum <= 0) {
+      setError('Enter the hours for this entry.')
+      return
+    }
+    if (!timeOfDay) {
+      setError('Select AM, PM, or Any.')
+      return
+    }
 
     setSaving(true)
     setError(null)
@@ -263,8 +327,8 @@ export function ScheduleEntryModal({
       project_id:         projectId,
       task_id:            taskId        || null,
       office_surveyor_id: officeSurvId  || null,
-      hours:              hours ? parseFloat(hours) : null,
-      time_of_day:        timeOfDay,
+      hours:              hoursNum,
+      time_of_day:        timeOfDay === 'any' ? null : timeOfDay,
       status,
       notes:              notes.trim() || null,
     }
@@ -314,6 +378,45 @@ export function ScheduleEntryModal({
     setSaving(false)
   }
 
+  async function handleCopy() {
+    if (!entry || !copyDate) return
+    setCopying(true)
+    setError(null)
+    const db = createClient() as any
+    const { data: { user } } = await db.auth.getUser()
+    const { data: newEntry, error: insErr } = await db
+      .from('field_schedule_entries')
+      .insert({
+        date:               copyDate,
+        project_id:         entry.project_id,
+        task_id:            entry.task_id,
+        office_surveyor_id: entry.office_surveyor_id,
+        hours:              entry.hours,
+        time_of_day:        entry.time_of_day,
+        status:             entry.status,
+        notes:              entry.notes,
+        created_by:         user?.id ?? null,
+      })
+      .select('id')
+      .single()
+    if (insErr || !newEntry) { setError('Failed to copy entry.'); setCopying(false); return }
+
+    if (entry.field_surveyors.length > 0) {
+      await db.from('field_schedule_surveyors').insert(
+        entry.field_surveyors.map(s => ({ entry_id: newEntry.id, staff_id: s.id }))
+      )
+    }
+    if (entry.resources.length > 0) {
+      await db.from('field_schedule_resources').insert(
+        entry.resources.map(r => ({ entry_id: newEntry.id, equipment_id: r.id }))
+      )
+    }
+
+    setCopying(false)
+    router.refresh()
+    onOpenChange(false)
+  }
+
   async function handleDelete() {
     if (!entry) return
     if (!window.confirm('Delete this schedule entry? This cannot be undone.')) return
@@ -336,7 +439,7 @@ export function ScheduleEntryModal({
       />
 
       {/* Slide-over panel */}
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-xl flex flex-col">
+      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg bg-white shadow-xl flex flex-col">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
@@ -369,7 +472,7 @@ export function ScheduleEntryModal({
               >
                 <option value="">Select a project…</option>
                 {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.job_number} — {p.title}</option>
+                  <option key={p.id} value={p.id}>{p.job_number} — {stripJobNumberPrefix(p.title, p.job_number)}</option>
                 ))}
               </select>
               {selectedProject && (
@@ -397,27 +500,19 @@ export function ScheduleEntryModal({
               </select>
             </div>
 
-            {/* Field Surveyors */}
+            {/* Hours */}
             <div>
-              <Label className="mb-1.5 block">Field Surveyor(s) <span className="text-slate-400 font-normal text-xs">(optional)</span></Label>
-              <GroupedSurveyorSelect
-                allStaff={allStaff}
-                selected={surveyorIds}
-                onChange={setSurveyorIds}
-                disabled={ro}
-              />
-            </div>
-
-            {/* Date */}
-            <div>
-              <Label htmlFor="se-date">Date</Label>
+              <Label htmlFor="se-hours">Hours <span className="text-red-500">*</span></Label>
               <Input
-                id="se-date"
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
+                id="se-hours"
+                type="number"
+                min="0"
+                step="0.5"
+                required
+                placeholder="e.g. 4"
+                value={hours}
+                onChange={e => setHours(e.target.value)}
                 disabled={ro}
-                required={!ro}
                 className="mt-1 disabled:bg-slate-50"
               />
             </div>
@@ -438,27 +533,84 @@ export function ScheduleEntryModal({
               </select>
             </div>
 
-            {/* Hours */}
+            {/* Time of Day */}
             <div>
-              <Label htmlFor="se-hours">Hours</Label>
+              <Label className="block mb-1.5">Time of Day <span className="text-red-500">*</span></Label>
+              <TimeOfDayToggle value={timeOfDay} onChange={setTimeOfDay} disabled={ro} />
+            </div>
+
+            {/* Date */}
+            <div>
+              <Label htmlFor="se-date">Date</Label>
               <Input
-                id="se-hours"
-                type="number"
-                min="0"
-                step="0.5"
-                placeholder="e.g. 4"
-                value={hours}
-                onChange={e => setHours(e.target.value)}
+                id="se-date"
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
                 disabled={ro}
+                required={!ro}
                 className="mt-1 disabled:bg-slate-50"
+              />
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/40 p-3">
+                <ScheduleAvailabilityCalendar
+                  selectedDate={date}
+                  onSelectDate={setDate}
+                  entries={allEntries}
+                  weeksToShow={4}
+                  disabled={ro}
+                  dailyCapacityHours={dailyCapacity}
+                />
+              </div>
+            </div>
+
+            {/* Equipment */}
+            <div>
+              <Label className="block mb-2">Equipment / Resources</Label>
+              <EquipmentRow
+                equipment={equipment}
+                selected={resourceIds}
+                onChange={setResourceIds}
+                disabled={ro}
               />
             </div>
 
-            {/* Time of Day */}
+            {/* Field Surveyors */}
             <div>
-              <Label className="block mb-1.5">Time of Day</Label>
-              <TimeOfDayToggle value={timeOfDay} onChange={setTimeOfDay} disabled={ro} />
+              <Label className="mb-1.5 block">Field Surveyor(s) <span className="text-slate-400 font-normal text-xs">(optional)</span></Label>
+              <GroupedSurveyorSelect
+                allStaff={allStaff}
+                selected={surveyorIds}
+                onChange={setSurveyorIds}
+                disabled={ro}
+              />
             </div>
+
+            {/* Previous site visits */}
+            {projectId && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <History className="h-3.5 w-3.5 text-amber-600" />
+                  <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Previous Site Visits</span>
+                </div>
+                {prevLoading ? (
+                  <p className="text-xs text-amber-700/70 italic">Loading…</p>
+                ) : prevVisits.length === 0 ? (
+                  <p className="text-xs text-amber-700/70 italic">No prior surveyor visits recorded for this site.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {prevVisits.map(v => (
+                      <div key={v.staff_id} className="flex items-center justify-between text-xs">
+                        <span className="text-slate-800 font-medium">{v.full_name}</span>
+                        <span className="text-slate-600">
+                          Last: {format(parseISO(v.last_date), 'd MMM yyyy')}
+                          {v.visit_count > 1 && ` · ${v.visit_count} visits`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Office Surveyor */}
             <div>
@@ -475,31 +627,6 @@ export function ScheduleEntryModal({
                   <option key={s.id} value={s.id}>{s.full_name}</option>
                 ))}
               </select>
-            </div>
-
-            {/* Equipment */}
-            <div>
-              <Label className="block mb-2">Equipment / Resources</Label>
-              <EquipmentRow
-                equipment={equipment}
-                selected={resourceIds}
-                onChange={setResourceIds}
-                disabled={ro}
-              />
-            </div>
-
-            {/* Notes */}
-            <div>
-              <Label htmlFor="se-notes">Notes <span className="text-slate-400 font-normal text-xs">(optional)</span></Label>
-              <textarea
-                id="se-notes"
-                rows={2}
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                disabled={ro}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none disabled:bg-slate-50 disabled:text-slate-500"
-                placeholder="Any additional notes…"
-              />
             </div>
 
             {/* Also scheduled panel */}
@@ -527,20 +654,79 @@ export function ScheduleEntryModal({
               </div>
             )}
 
+            {/* Notes */}
+            <div>
+              <Label htmlFor="se-notes">Notes <span className="text-slate-400 font-normal text-xs">(optional)</span></Label>
+              <textarea
+                id="se-notes"
+                rows={2}
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                disabled={ro}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 resize-none disabled:bg-slate-50 disabled:text-slate-500"
+                placeholder="Any additional notes…"
+              />
+            </div>
+
             {error && <p className="text-sm text-red-600">{error}</p>}
           </form>
 
+          {/* Copy-to-another-day panel */}
+          {isEdit && canEdit && copyOpen && (
+            <div className="px-6 py-3 border-t border-slate-200 bg-blue-50/50 shrink-0">
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Label htmlFor="se-copy-date" className="text-xs">Copy to date</Label>
+                  <Input
+                    id="se-copy-date"
+                    type="date"
+                    value={copyDate}
+                    onChange={e => setCopyDate(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  onClick={handleCopy}
+                  disabled={copying || !copyDate || copyDate === entry?.date}
+                >
+                  {copying && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Copy
+                </Button>
+                <Button type="button" variant="outline" onClick={() => { setCopyOpen(false); setCopyDate('') }}>
+                  Cancel
+                </Button>
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                Duplicates this entry (surveyors, equipment, hours, notes) onto the chosen day.
+              </p>
+            </div>
+          )}
+
           {/* Footer */}
           <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
-            {(isEdit && canEdit) ? (
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="text-sm text-red-500 hover:text-red-700 transition-colors"
-              >
-                Delete entry
-              </button>
-            ) : <div />}
+            <div className="flex items-center gap-4">
+              {(isEdit && canEdit) && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="text-sm text-red-500 hover:text-red-700 transition-colors"
+                >
+                  Delete entry
+                </button>
+              )}
+              {(isEdit && canEdit) && (
+                <button
+                  type="button"
+                  onClick={() => setCopyOpen(o => !o)}
+                  className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900 transition-colors"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy to another day
+                </button>
+              )}
+              {!(isEdit && canEdit) && <div />}
+            </div>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 {canEdit ? 'Cancel' : 'Close'}

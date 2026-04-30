@@ -20,6 +20,9 @@
 .DS_Store
 *.pem
 
+# Office lock files
+~$*
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -30,6 +33,9 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# local reference/archive material (backups, client data, docs)
+/reference
 
 # typescript
 *.tsbuildinfo

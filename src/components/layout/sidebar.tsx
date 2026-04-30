@@ -70,13 +70,17 @@ export function Sidebar({ myProfile, viewAsProfile, allStaff }: SidebarProps) {
   }
 
   return (
-    <aside className="fixed top-0 left-0 z-40 flex flex-col w-60 h-screen bg-slate-900 text-slate-100">
-      <div className="px-6 py-5 border-b border-slate-700">
-        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">DLCS</p>
-        <p className="text-sm font-medium text-white mt-0.5">Project Manager</p>
+    <aside className="fixed top-0 left-0 z-40 flex flex-col w-60 h-screen bg-dlcs-sidebar-bg text-dlcs-nav-text">
+      {/* Brand header: orange stripe + DLCS eyebrow + Project Manager */}
+      <div className="flex items-center gap-2.5 px-5 pt-6 pb-5">
+        <span aria-hidden className="block w-1 h-9 rounded-sm bg-dlcs-brand" />
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[13px] font-semibold tracking-[0.12em] text-dlcs-ink-faint">DLCS</span>
+          <span className="text-[15px] font-bold text-white leading-tight">Project Manager</span>
+        </div>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-3 pt-3 space-y-0.5 overflow-y-auto">
         {visibleNav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
@@ -84,15 +88,20 @@ export function Sidebar({ myProfile, viewAsProfile, allStaff }: SidebarProps) {
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                'group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors',
                 active
-                  ? 'bg-slate-700 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  ? 'bg-dlcs-sidebar-active text-white font-semibold'
+                  : 'text-dlcs-nav-text font-medium hover:bg-dlcs-sidebar-active/60 hover:text-white'
               )}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              {label}
-              {active && <ChevronRight className="h-3 w-3 ml-auto" />}
+              <Icon
+                className={cn(
+                  'h-[18px] w-[18px] shrink-0 transition-colors',
+                  active ? 'text-dlcs-brand' : 'text-dlcs-nav-icon group-hover:text-white'
+                )}
+              />
+              <span className="flex-1">{label}</span>
+              {active && <ChevronRight className="h-4 w-4 text-dlcs-ink-faint" />}
             </Link>
           )
         })}
@@ -100,12 +109,12 @@ export function Sidebar({ myProfile, viewAsProfile, allStaff }: SidebarProps) {
 
       {/* "Viewing as" switcher */}
       {allStaff.length > 0 && (
-        <div className="px-3 py-3 border-t border-slate-700">
-          <p className="text-xs text-slate-500 uppercase tracking-widest px-1 mb-1.5">Viewing as</p>
+        <div className="px-3 py-3 border-t border-dlcs-sidebar-border">
+          <p className="text-[11px] text-dlcs-ink-faint uppercase tracking-[0.12em] px-1 mb-1.5">Viewing as</p>
           <select
             value={viewAsProfile?.id ?? ''}
             onChange={e => handleViewAsChange(e.target.value)}
-            className="w-full rounded-md bg-slate-800 border border-slate-600 text-slate-200 text-sm px-2 py-1.5 cursor-pointer"
+            className="w-full rounded-md bg-dlcs-sidebar-active border border-dlcs-sidebar-border text-dlcs-nav-text text-sm px-2 py-1.5 cursor-pointer"
           >
             {allStaff.map(s => (
               <option key={s.id} value={s.id}>{s.full_name}</option>
@@ -119,12 +128,12 @@ export function Sidebar({ myProfile, viewAsProfile, allStaff }: SidebarProps) {
         </div>
       )}
 
-      <div className="px-3 py-4 border-t border-slate-700">
+      <div className="px-3 py-4 border-t border-dlcs-sidebar-border">
         <button
           onClick={handleSignOut}
-          className="flex w-full items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-dlcs-nav-text hover:text-white hover:bg-dlcs-sidebar-active/60 transition-colors"
         >
-          <LogOut className="h-4 w-4 shrink-0" />
+          <LogOut className="h-[18px] w-[18px] shrink-0 text-dlcs-nav-icon" />
           Sign out
         </button>
       </div>

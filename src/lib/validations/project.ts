@@ -16,6 +16,8 @@ export const projectSchema = z.object({
   // Site
   site_address: z.string().nullable().optional(),
   suburb: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  postcode: z.string().nullable().optional(),
   lot_number: z.string().nullable().optional(),
   section_number: z.string().nullable().optional(),
   plan_number: z.string().nullable().optional(),
@@ -25,6 +27,9 @@ export const projectSchema = z.object({
   // Tasks
   task_ids: z.array(z.string()),
   custom_tasks: z.array(z.string()),
+  // Invoice rendering
+  invoice_layout: z.enum(['role_grouped', 'per_line']).optional(),
+  invoice_show_entry_details: z.boolean().optional(),
 })
 
 export type ProjectFormValues = z.infer<typeof projectSchema>

@@ -3,6 +3,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  /* DLCS brand tokens (Frame C — "Variation A in Charcoal") */
+  --color-dlcs-canvas:         #F5F4F1;
+  --color-dlcs-card:           #FFFFFF;
+  --color-dlcs-card-border:    #E8E6E0;
+  --color-dlcs-row-divider:    #EFEDE6;
+  --color-dlcs-table-head-bg:  #FAF8F3;
+  --color-dlcs-sidebar-bg:     #2F2F33;
+  --color-dlcs-sidebar-active: #45454B;
+  --color-dlcs-sidebar-border: #3F3F44;
+  --color-dlcs-brand:          #F39200;
+  --color-dlcs-ink:            #111111;
+  --color-dlcs-ink-soft:       #4B4B4F;
+  --color-dlcs-ink-muted:      #6B6B6F;
+  --color-dlcs-ink-faint:      #9A9A9C;
+  --color-dlcs-nav-text:       #D6D6D9;
+  --color-dlcs-nav-icon:       #BDBDC0;
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -82,4 +101,15 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
+}
+
+/* Neutralize Chrome's blue tint on autofilled inputs */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: var(--foreground) !important;
+  transition: background-color 5000s ease-in-out 0s;
 }

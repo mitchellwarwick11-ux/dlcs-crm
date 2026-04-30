@@ -21,6 +21,22 @@ export default async function EditClientPage({
 
   if (!client) notFound()
 
+  const { data: contactsData } = await (supabase as any)
+    .from('client_contacts')
+    .select('*')
+    .eq('client_id', id)
+    .order('sort_order', { ascending: true })
+
+  const initialContacts = (contactsData ?? []).map((c: any) => ({
+    key: c.id,
+    id: c.id,
+    name: c.name ?? '',
+    role: c.role ?? '',
+    email: c.email ?? '',
+    phone: c.phone ?? '',
+    is_primary: !!c.is_primary,
+  }))
+
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-6">
@@ -43,6 +59,7 @@ export default async function EditClientPage({
           notes: client.notes ?? '',
           is_active: client.is_active,
         }}
+        initialContacts={initialContacts}
       />
     </div>
   )

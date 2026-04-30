@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus, Pencil } from 'lucide-react'
 import { DeleteTemplateButton } from '@/components/quotes/delete-template-button'
@@ -17,12 +16,12 @@ export default async function QuoteTemplatesPage() {
     .from('fee_proposal_templates')
     .select('*')
     .eq('is_active', true)
-    .order('sort_order')
+    .order('label', { ascending: true })
 
   const templateList = (templates ?? []) as FeeProposalTemplate[]
 
   return (
-    <div className="p-8 space-y-6 max-w-3xl">
+    <div className="p-8 space-y-6 max-w-5xl">
 
       <div className="flex items-center justify-between">
         <div>
@@ -33,7 +32,7 @@ export default async function QuoteTemplatesPage() {
           </div>
           <h1 className="text-2xl font-semibold text-slate-900">Fee Proposal Templates</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Templates define the survey type, scope items, and notes used in fee proposals.
+            Templates define the Quote Tasks, items headings, and notes used in fee proposals.
           </p>
         </div>
         <Link href="/quotes/templates/new">
@@ -55,47 +54,49 @@ export default async function QuoteTemplatesPage() {
           </Link>
         </div>
       ) : (
-        <div className="space-y-3">
-          {templateList.map(t => (
-            <Card key={t.id}>
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <h2 className="font-semibold text-slate-900">{t.label}</h2>
-                    <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
-                      <span>{t.scope_items.length} scope item{t.scope_items.length !== 1 ? 's' : ''}</span>
-                      <span>{t.please_note_items.length} note{t.please_note_items.length !== 1 ? 's' : ''}</span>
-                      <span>Valid for {t.valid_until_days} days</span>
-                    </div>
-                    {t.scope_items.length > 0 && (
-                      <ul className="mt-3 space-y-1">
-                        {t.scope_items.slice(0, 3).map((item, i) => (
-                          <li key={i} className="text-xs text-slate-500 flex gap-1.5">
-                            <span className="text-slate-300 shrink-0">•</span>
-                            {item}
-                          </li>
-                        ))}
-                        {t.scope_items.length > 3 && (
-                          <li className="text-xs text-slate-400 pl-3.5">
-                            + {t.scope_items.length - 3} more…
-                          </li>
-                        )}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Link href={`/quotes/templates/${t.id}/edit`}>
-                      <Button variant="outline" size="sm">
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                        Edit
-                      </Button>
-                    </Link>
-                    <DeleteTemplateButton templateId={t.id} templateLabel={t.label} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="text-left font-medium px-4 py-2.5">Template</th>
+                <th className="text-right font-medium px-3 py-2.5 w-28">Quote Tasks</th>
+                <th className="text-right font-medium px-3 py-2.5 w-32">Items Headings</th>
+                <th className="text-right font-medium px-3 py-2.5 w-20">Notes</th>
+                <th className="text-right font-medium px-3 py-2.5 w-28">Valid (days)</th>
+                <th className="text-right font-medium px-4 py-2.5 w-36">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {templateList.map(t => {
+                const tasks = t.quote_tasks ?? []
+                const headingCount = tasks.reduce((sum, task) => sum + task.itemsHeadings.length, 0)
+                return (
+                  <tr key={t.id} className="border-t border-slate-100 hover:bg-slate-50/60">
+                    <td className="px-4 py-3">
+                      <Link href={`/quotes/templates/${t.id}/edit`} className="font-medium text-slate-900 hover:underline">
+                        {t.label}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-3 text-right text-slate-700 tabular-nums">{tasks.length}</td>
+                    <td className="px-3 py-3 text-right text-slate-700 tabular-nums">{headingCount}</td>
+                    <td className="px-3 py-3 text-right text-slate-700 tabular-nums">{t.please_note_items.length}</td>
+                    <td className="px-3 py-3 text-right text-slate-700 tabular-nums">{t.valid_until_days}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <Link href={`/quotes/templates/${t.id}/edit`}>
+                          <Button variant="outline" size="sm">
+                            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                            Edit
+                          </Button>
+                        </Link>
+                        <DeleteTemplateButton templateId={t.id} templateLabel={t.label} />
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

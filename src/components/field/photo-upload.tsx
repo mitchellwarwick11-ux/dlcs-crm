@@ -155,24 +155,19 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
   const typeLabelPlural = isDocument ? 'fieldbook pages' : 'photos'
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="px-4 py-5 space-y-5">
+    <div className="flex-1 overflow-y-auto bg-[#F5F4F1]">
+      <div className="px-5 py-5 space-y-5">
 
-        {/* Upload zone */}
-        <div
+        {/* Primary CTA — dark pill */}
+        <button
           onClick={() => inputRef.current?.click()}
-          className="border-2 border-dashed border-blue-300 rounded-xl p-6 text-center bg-blue-50 hover:bg-blue-100 cursor-pointer transition-colors active:scale-[0.98]"
+          className="w-full py-4 rounded-full bg-[#111111] hover:bg-black text-white font-semibold text-sm flex items-center justify-center gap-2.5 transition-colors active:scale-[0.98]"
         >
           {isDocument
-            ? <ImageIcon className="h-10 w-10 text-blue-400 mx-auto mb-2" />
-            : <Camera    className="h-10 w-10 text-blue-400 mx-auto mb-2" />
+            ? <ImageIcon className="h-5 w-5 text-[#F39200]" />
+            : <Camera    className="h-5 w-5 text-[#F39200]" />
           }
-          <p className="text-sm font-semibold text-blue-700">
-            {isDocument ? 'Photograph fieldbook pages' : 'Take or choose photos'}
-          </p>
-          <p className="text-xs text-blue-500 mt-1">
-            Photos are automatically compressed to ~20% of original size
-          </p>
+          {isDocument ? 'Photograph Page' : 'Take Photo'}
           <input
             ref={inputRef}
             type="file"
@@ -181,31 +176,31 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
             className="hidden"
             onChange={e => handleFiles(e.target.files)}
           />
-        </div>
+        </button>
 
         {/* Pending files */}
         {pending.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+            <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-2">
               Ready to upload ({pending.length})
             </p>
             <div className="space-y-3">
               {pending.map(item => (
-                <div key={item.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div key={item.id} className="bg-white border border-[#E8E6E0] rounded-xl overflow-hidden">
                   {/* Preview */}
-                  <div className="relative h-32 bg-slate-100">
+                  <div className="relative h-32 bg-[#EFEDE6]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={item.preview} alt="" className="w-full h-full object-cover" />
                     <button
                       onClick={() => removePending(item.id)}
-                      className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full hover:bg-black/70"
+                      className="absolute top-2 right-2 p-1 bg-[#111111]/80 text-white rounded-full hover:bg-[#111111]"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
                     {item.compressing && (
-                      <div className="absolute inset-0 bg-white/70 flex items-center justify-center gap-2">
-                        <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                        <span className="text-xs font-medium text-blue-700">Compressing…</span>
+                      <div className="absolute inset-0 bg-[#111111]/70 flex items-center justify-center gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin text-[#F39200]" />
+                        <span className="text-xs font-semibold text-[#F39200]">Compressing…</span>
                       </div>
                     )}
                   </div>
@@ -213,7 +208,7 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
                   <div className="p-3 space-y-2">
                     {/* Size indicator */}
                     {!item.compressing && item.compressedSize && (
-                      <p className="text-[10px] text-slate-400">
+                      <p className="text-[10px] text-[#9A9A9C]">
                         {formatBytes(item.originalSize)} → {formatBytes(item.compressedSize)}
                         {' '}({Math.round(item.compressedSize / item.originalSize * 100)}% of original)
                       </p>
@@ -225,7 +220,7 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
                       value={item.caption}
                       onChange={e => updateCaption(item.id, e.target.value)}
                       placeholder={`Add a caption (optional)`}
-                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      className="w-full text-sm border border-[#E8E6E0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#F39200]"
                     />
                   </div>
                 </div>
@@ -233,20 +228,20 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 p-3 mt-3 bg-red-50 border border-red-200 rounded-xl">
-                <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
-                <p className="text-sm text-red-700">{error}</p>
+              <div className="flex items-center gap-2 p-3 mt-3 bg-[#F8E4E4] border border-[#E9B7B7] rounded-xl">
+                <AlertTriangle className="h-4 w-4 text-[#A31D1D] shrink-0" />
+                <p className="text-sm text-[#A31D1D]">{error}</p>
               </div>
             )}
 
             <button
               onClick={uploadAll}
               disabled={uploading || pending.some(p => p.compressing)}
-              className="mt-3 w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+              className="mt-3 w-full py-3.5 bg-[#111111] hover:bg-black disabled:bg-[#4B4B4F] text-white font-semibold rounded-full text-sm transition-colors flex items-center justify-center gap-2"
             >
               {uploading
-                ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</>
-                : <><Upload className="h-4 w-4" /> Upload {pending.length} {pending.length === 1 ? typeLabel : typeLabelPlural}</>
+                ? <><Loader2 className="h-4 w-4 animate-spin text-[#F39200]" /> Uploading…</>
+                : <><Upload className="h-4 w-4 text-[#F39200]" /> Upload {pending.length} {pending.length === 1 ? typeLabel : typeLabelPlural}</>
               }
             </button>
           </div>
@@ -255,12 +250,15 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
         {/* Uploaded photos */}
         {existingPhotos.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-              Uploaded ({existingPhotos.length})
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase">
+                Uploaded · {existingPhotos.length} {existingPhotos.length === 1 ? typeLabel : typeLabelPlural}
+              </p>
+              <p className="text-[10px] text-[#9A9A9C]">Compressed ~20%</p>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               {existingPhotos.map(photo => (
-                <div key={photo.id} className="relative bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
+                <div key={photo.id} className="relative bg-white rounded-xl overflow-hidden border border-[#E8E6E0]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`${supabaseUrl}/storage/v1/object/authenticated/field-photos/${photo.storage_path}`}
@@ -270,17 +268,17 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
                   />
                   <div className="p-2">
                     {photo.caption && (
-                      <p className="text-xs text-slate-600 mb-1 truncate">{photo.caption}</p>
+                      <p className="text-xs text-[#4B4B4F] mb-1 truncate">{photo.caption}</p>
                     )}
                     {photo.compressed_size_bytes && photo.original_size_bytes && (
-                      <p className="text-[10px] text-slate-400">
+                      <p className="text-[10px] text-[#9A9A9C]">
                         {formatBytes(photo.compressed_size_bytes)}
                       </p>
                     )}
                     <button
                       onClick={() => deletePhoto(photo)}
                       disabled={deleting === photo.id}
-                      className="mt-1 flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                      className="mt-1 flex items-center gap-1 text-xs text-[#A31D1D] hover:text-[#7F1515] transition-colors disabled:opacity-50"
                     >
                       {deleting === photo.id
                         ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -297,7 +295,7 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
 
         {existingPhotos.length === 0 && pending.length === 0 && (
           <div className="text-center py-6">
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-[#9A9A9C]">
               No {typeLabelPlural} uploaded yet.
             </p>
           </div>

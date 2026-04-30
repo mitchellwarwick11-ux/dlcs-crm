@@ -63,7 +63,7 @@ export default async function JobHubPage({
       .maybeSingle(),
 
     db.from('field_time_logs')
-      .select('id, total_hours, is_overtime, start_time, end_time, notes')
+      .select('id, total_hours, is_overtime, start_time, end_time, notes, acting_role')
       .eq('entry_id', entryId)
       .eq('staff_id', staffProfile.id)
       .maybeSingle(),
@@ -89,62 +89,58 @@ export default async function JobHubPage({
   const address = proj ? [proj.site_address, proj.suburb].filter(Boolean).join(', ') : null
 
   return (
-    <div className="flex flex-col flex-1">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-4 pt-safe-top pb-0">
+    <div className="flex flex-col flex-1 bg-[#F5F4F1]">
+      {/* Header — charcoal */}
+      <div className="bg-[#2F2F33] px-4 pt-safe-top">
         <div className="flex items-center gap-2 py-3">
-          <Link href="/field" className="p-1.5 -ml-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">
-            <ChevronLeft className="h-5 w-5" />
+          <Link href="/field" className="p-1.5 -ml-1.5 rounded-lg text-[#BDBDC0] hover:bg-[#45454B] transition-colors">
+            <ChevronLeft className="h-6 w-6" />
           </Link>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">Job Hub</p>
-            <h1 className="text-base font-bold text-slate-900 truncate">
+            <p className="text-[10px] text-[#F39200] font-bold tracking-[0.18em]">JOB HUB</p>
+            <h1 className="text-base font-bold text-white truncate">
               {proj?.job_number ?? entryId.slice(0, 8)}
-              {task && <span className="font-normal text-slate-500"> · {task.title}</span>}
             </h1>
           </div>
         </div>
 
         {/* Job details strip */}
-        <div className="pb-4 space-y-1.5">
-          <div className="flex items-center gap-4 flex-wrap">
-            <span className="text-sm font-semibold text-slate-700">
-              {format(parseISO(entry.date), 'EEE d MMMM yyyy')}
-            </span>
-            {entry.time_of_day && (
-              <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase">
-                {entry.time_of_day}
-              </span>
+        <div className="pb-5 space-y-2">
+          {task && (
+            <p className="text-[20px] font-bold text-white leading-snug">{task.title}</p>
+          )}
+          <div className="flex items-center gap-4 flex-wrap text-[13px] text-[#D6D6D9]">
+            {address && (
+              <div className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-[#BDBDC0] shrink-0" />
+                <span>{address}</span>
+              </div>
             )}
-            {entry.hours != null && (
-              <div className="flex items-center gap-1 text-xs text-slate-500">
-                <Clock className="h-3.5 w-3.5" />
-                {entry.hours}h
+            {entry.time_of_day && (
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-[#BDBDC0]" />
+                <span>{entry.time_of_day.toUpperCase()}{entry.hours != null ? ` · ${entry.hours}h` : ''}</span>
               </div>
             )}
           </div>
-          {address && (
-            <div className="flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-              <p className="text-sm text-slate-500">{address}</p>
-            </div>
-          )}
-          {entry.office_surveyor && (
-            <p className="text-xs text-slate-400">Office: {entry.office_surveyor.full_name}</p>
-          )}
+          <p className="text-xs text-[#9A9A9C]">
+            {format(parseISO(entry.date), 'EEE d MMMM yyyy')}
+            {entry.office_surveyor && ` · Office: ${entry.office_surveyor.full_name}`}
+          </p>
         </div>
       </div>
 
       {/* Hub tiles */}
-      <div className="flex-1 overflow-y-auto px-4 py-5">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Actions</p>
-        <div className="space-y-3">
+      <div className="flex-1 overflow-y-auto px-5 py-5 bg-[#F5F4F1]">
+        <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-3">Actions</p>
+        <div className="space-y-2.5">
 
           {/* Safety / JSA */}
           <HubTile
             href={`/field/${entryId}/safety`}
-            icon={<ShieldCheck className="h-6 w-6" />}
-            iconBg="bg-red-50 text-red-600"
+            icon={<ShieldCheck className="h-[22px] w-[22px]" />}
+            iconBg="bg-[#F8E4E4] text-[#A31D1D]"
+            accentColor="bg-[#A31D1D]"
             title="Risk Assessment"
             subtitle="Complete pre-start safety form"
             status={jsa ? 'done' : 'required'}
@@ -154,8 +150,9 @@ export default async function JobHubPage({
           {/* Job Brief */}
           <HubTile
             href={`/field/${entryId}/brief`}
-            icon={<BookOpen className="h-6 w-6" />}
-            iconBg="bg-purple-50 text-purple-600"
+            icon={<BookOpen className="h-[22px] w-[22px]" />}
+            iconBg="bg-[#FBF1D8] text-[#A86B0C]"
+            accentColor="bg-[#F39200]"
             title="Job Brief & Checklists"
             subtitle="Instructions and equipment checklist"
             status={brief ? 'available' : 'none'}
@@ -165,8 +162,9 @@ export default async function JobHubPage({
           {/* Site Photos */}
           <HubTile
             href={`/field/${entryId}/photos`}
-            icon={<Camera className="h-6 w-6" />}
-            iconBg="bg-emerald-50 text-emerald-600"
+            icon={<Camera className="h-[22px] w-[22px]" />}
+            iconBg="bg-[#E7F3EC] text-[#1F7A3F]"
+            accentColor="bg-[#1F7A3F]"
             title="Site Photos"
             subtitle="Capture and upload site images"
             status={(photoCount ?? 0) > 0 ? 'done' : 'pending'}
@@ -176,8 +174,9 @@ export default async function JobHubPage({
           {/* Fieldbook Notes */}
           <HubTile
             href={`/field/${entryId}/notes`}
-            icon={<FileText className="h-6 w-6" />}
-            iconBg="bg-amber-50 text-amber-600"
+            icon={<FileText className="h-[22px] w-[22px]" />}
+            iconBg="bg-[#EFEDE6] text-[#6B6B6F]"
+            accentColor="bg-[#D6D6D9]"
             title="Fieldbook Notes"
             subtitle="Photograph your fieldbook pages"
             status={(notesCount ?? 0) > 0 ? 'done' : 'pending'}
@@ -187,8 +186,9 @@ export default async function JobHubPage({
           {/* Time Log */}
           <HubTile
             href={`/field/${entryId}/time`}
-            icon={<Timer className="h-6 w-6" />}
-            iconBg="bg-blue-50 text-blue-600"
+            icon={<Timer className="h-[22px] w-[22px]" />}
+            iconBg="bg-[#E6EEF7] text-[#2257A3]"
+            accentColor="bg-[#2257A3]"
             title="Time Log"
             subtitle="Record start, finish and breaks"
             status={timeLog ? 'done' : 'pending'}
@@ -204,15 +204,18 @@ export default async function JobHubPage({
 
         {/* Notes from entry */}
         {entry.notes && (
-          <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">PM Notes</p>
-            <p className="text-sm text-amber-800 whitespace-pre-wrap">{entry.notes}</p>
+          <div className="mt-5 flex gap-3 p-3.5 bg-[#FAF8F3] border border-[#EFEDE6] rounded-xl">
+            <div className="w-[3px] bg-[#F39200] shrink-0 rounded-full" />
+            <div className="flex-1">
+              <p className="text-[10px] font-bold text-[#F39200] tracking-[0.18em] mb-1">PM NOTES</p>
+              <p className="text-sm text-[#4B4B4F] whitespace-pre-wrap leading-relaxed">{entry.notes}</p>
+            </div>
           </div>
         )}
 
         {/* Submit button */}
         <div className="mt-6 pb-8">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">End of Day</p>
+          <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-3">End of Day</p>
           <SubmitJobButton
             entryId={entryId}
             projectId={entry.project_id}
@@ -220,6 +223,7 @@ export default async function JobHubPage({
             taskTitle={task?.title ?? null}
             staffId={staffProfile.id}
             staffRole={(staffProfile as any).role ?? ''}
+            actingRole={(timeLog as any)?.acting_role ?? null}
             workDate={entry.date}
             timeLogId={timeLog?.id ?? null}
             timeEntryId={null}
@@ -240,6 +244,7 @@ function HubTile({
   href,
   icon,
   iconBg,
+  accentColor,
   title,
   subtitle,
   status,
@@ -249,6 +254,7 @@ function HubTile({
   href: string
   icon: React.ReactNode
   iconBg: string
+  accentColor: string
   title: string
   subtitle: string
   status: 'done' | 'required' | 'pending' | 'available' | 'none'
@@ -256,34 +262,35 @@ function HubTile({
   overtime?: boolean
 }) {
   const statusIcon =
-    status === 'done'     ? <CheckCircle2 className="h-4 w-4 text-green-500" /> :
-    status === 'required' ? <AlertCircle  className="h-4 w-4 text-red-500"   /> :
-                            <Circle       className="h-4 w-4 text-slate-300"  />
+    status === 'done'     ? <CheckCircle2 className="h-4 w-4 text-[#1F7A3F]" /> :
+    status === 'required' ? <AlertCircle  className="h-4 w-4 text-[#A31D1D]" /> :
+                            <Circle       className="h-4 w-4 text-[#BDBDC0]" />
 
   return (
     <Link
       href={href}
-      className="flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-300 hover:shadow-md transition-all active:scale-[0.99]"
+      className="flex items-center gap-3.5 p-3.5 bg-white border border-[#E8E6E0] rounded-xl hover:border-[#F39200] transition-colors active:scale-[0.99]"
     >
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
+      <div className={`w-[3px] h-11 rounded-sm shrink-0 ${accentColor}`} />
+      <div className={`w-[42px] h-[42px] rounded-[10px] flex items-center justify-center shrink-0 ${iconBg}`}>
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-slate-900 text-sm">{title}</p>
-        <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
+        <p className="font-bold text-[#111111] text-sm">{title}</p>
+        <p className="text-xs text-[#6B6B6F] mt-0.5">{subtitle}</p>
         <div className="flex items-center gap-1.5 mt-1">
           {statusIcon}
           <span className={`text-xs ${
-            overtime ? 'text-orange-600 font-medium' :
-            status === 'done' ? 'text-green-600' :
-            status === 'required' ? 'text-red-500 font-medium' :
-            'text-slate-400'
+            overtime ? 'text-[#A86B0C] font-medium' :
+            status === 'done' ? 'text-[#1F7A3F]' :
+            status === 'required' ? 'text-[#A31D1D] font-medium' :
+            'text-[#9A9A9C]'
           }`}>
             {statusLabel}
           </span>
         </div>
       </div>
-      <ChevronLeft className="h-4 w-4 text-slate-300 rotate-180 shrink-0" />
+      <ChevronLeft className="h-4 w-4 text-[#BDBDC0] rotate-180 shrink-0" />
     </Link>
   )
 }

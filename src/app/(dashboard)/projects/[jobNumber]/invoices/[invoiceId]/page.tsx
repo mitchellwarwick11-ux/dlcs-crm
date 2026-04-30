@@ -6,6 +6,7 @@ import { InvoiceStatusActions } from '@/components/invoices/invoice-status-actio
 import { PrintInvoiceButton } from '@/components/invoices/print-invoice-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatCurrency, formatDate } from '@/lib/utils/formatters'
+import { fetchTaskPosForInvoice, type TaskPo } from '@/lib/utils/invoice-pos'
 import { ArrowLeft } from 'lucide-react'
 import type { InvoiceStatus } from '@/types/database'
 
@@ -32,10 +33,10 @@ export default async function InvoiceDetailPage({
     db
       .from('invoice_items')
       .select(`
-        id, description, quantity, unit_price, amount, sort_order,
+        id, description, quantity, unit_price, amount, sort_order, is_variation,
         task_id, prev_claimed_amount,
-        project_tasks ( title, fee_type, quoted_amount ),
-        time_entries!time_entry_id ( date, staff_profiles ( full_name ) )
+        project_tasks ( title, fee_type, quoted_amount, quotes!quote_id ( quote_number ) ),
+        time_entries!time_entry_id ( date, staff_profiles!staff_id ( full_name ) )
       `)
       .eq('invoice_id', invoiceId)
       .order('sort_order'),
@@ -57,6 +58,12 @@ export default async function InvoiceDetailPage({
   const inv      = invoice as any
   const itemList = (items ?? []) as any[]
 
+  // POs that authorise tasks on this invoice (per-task display)
+  const invoiceTaskIds = Array.from(
+    new Set(itemList.map(i => i.task_id).filter((id): id is string => !!id))
+  )
+  const taskPoMap = await fetchTaskPosForInvoice(db, inv.project_id, invoiceTaskIds)
+
   // Separate cost items (no task link) from task items
   // Cost items: task_id is null AND project_tasks is null (i.e. not a legacy ungrouped task row)
   const costItems  = itemList.filter(i => i.task_id == null && i.project_tasks == null)
@@ -72,6 +79,8 @@ export default async function InvoiceDetailPage({
     thisClaim?:   number
     remaining?:   number
     claimLabel?:  'Progress Claim' | 'Final Claim'
+    quoteNumber?: string | null
+    pos:          TaskPo[]
     rows: typeof itemList
   }
 
@@ -86,9 +95,12 @@ export default async function InvoiceDetailPage({
     if (!groupMap.has(key)) {
       const quoted      = item.project_tasks?.quoted_amount ?? 0
       const prevClaimed = (item.prev_claimed_amount as number | null) ?? 0
-      const thisClaim   = feeType === 'fixed' ? (item.amount ?? item.unit_price) : 0
+      // Only the non-variation fixed-fee row anchors `thisClaim`.
+      const thisClaim   = feeType === 'fixed' && !item.is_variation ? (item.amount ?? item.unit_price) : 0
       const remaining   = Math.max(0, quoted - prevClaimed - thisClaim)
 
+      const taskQuotes = (item.project_tasks as any)?.quotes
+      const quoteNumber = (Array.isArray(taskQuotes) ? taskQuotes[0]?.quote_number : taskQuotes?.quote_number) ?? null
       groupMap.set(key, {
         taskId:    key,
         title:     item.project_tasks?.title ?? item.description,
@@ -100,10 +112,21 @@ export default async function InvoiceDetailPage({
         claimLabel: feeType === 'fixed' && hasTaskData
           ? (remaining <= 0.005 ? 'Final Claim' : 'Progress Claim')
           : undefined,
+        quoteNumber,
+        pos: item.task_id ? (taskPoMap.get(item.task_id) ?? []) : [],
         rows: [],
       })
     }
-    groupMap.get(key)!.rows.push(item)
+    const group = groupMap.get(key)!
+    // Late-arriving fixed-fee anchor row (variation came first in sort_order).
+    if (feeType === 'fixed' && !item.is_variation && (group.thisClaim ?? 0) === 0) {
+      group.thisClaim = item.amount ?? item.unit_price
+      group.remaining = Math.max(0, (group.quoted ?? 0) - (group.prevClaimed ?? 0) - (group.thisClaim ?? 0))
+      if (hasTaskData) {
+        group.claimLabel = (group.remaining ?? 0) <= 0.005 ? 'Final Claim' : 'Progress Claim'
+      }
+    }
+    group.rows.push(item)
   }
 
   const taskGroups = Array.from(groupMap.values())
@@ -180,7 +203,12 @@ export default async function InvoiceDetailPage({
             {/* Task header */}
             <CardHeader className="pb-3 border-b border-slate-100">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-semibold text-slate-800">{group.title}</CardTitle>
+                <CardTitle className="text-sm font-semibold text-slate-800 flex items-baseline gap-3">
+                  <span>{group.title}</span>
+                  {group.quoteNumber && (
+                    <span className="text-xs font-normal text-slate-500">Quote #: {group.quoteNumber}</span>
+                  )}
+                </CardTitle>
                 {group.claimLabel && (
                   <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
                     group.claimLabel === 'Final Claim'
@@ -191,6 +219,11 @@ export default async function InvoiceDetailPage({
                   </span>
                 )}
               </div>
+              {group.pos.length > 0 && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Authorised by PO: {group.pos.map(p => p.po_number).join(', ')}
+                </p>
+              )}
             </CardHeader>
 
             <CardContent className="p-0">
@@ -218,6 +251,46 @@ export default async function InvoiceDetailPage({
                 </div>
               )}
 
+              {/* Variation rows on a fixed-fee task — billed hourly under the fixed fee */}
+              {group.feeType === 'fixed' && hasTaskData && group.rows.some((i: any) => i.is_variation) && (
+                <div className="border-t border-slate-100">
+                  <div className="px-4 pt-3 pb-1 flex items-baseline justify-between gap-3 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    <span>Variations to Fixed Fee</span>
+                    {group.quoteNumber && (
+                      <span className="font-normal normal-case tracking-normal text-amber-700/75">Quote #: {group.quoteNumber}</span>
+                    )}
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-amber-50/40">
+                        <th className="text-left px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Date</th>
+                        <th className="text-left px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Staff</th>
+                        <th className="text-left px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Description</th>
+                        <th className="text-right px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Hours</th>
+                        <th className="text-right px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Rate</th>
+                        <th className="text-right px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {group.rows.filter((i: any) => i.is_variation).map((item: any) => (
+                        <tr key={item.id}>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
+                            {item.time_entries?.date ? formatDate(item.time_entries.date) : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
+                            {item.time_entries?.staff_profiles?.full_name ?? '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-700 text-xs">{item.description}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-600 tabular-nums text-xs">{item.quantity}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums text-xs">{formatCurrency(item.unit_price)}/h</td>
+                          <td className="px-4 py-2.5 text-right font-medium text-slate-900 tabular-nums">{formatCurrency(item.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               {/* Fixed fee — simple display (old invoices without task data) */}
               {group.feeType === 'fixed' && !hasTaskData && (
                 <div className="px-4 py-4 flex justify-between text-sm">
@@ -240,20 +313,31 @@ export default async function InvoiceDetailPage({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {group.rows.map((item: any) => (
-                      <tr key={item.id}>
-                        <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
-                          {item.time_entries?.date ? formatDate(item.time_entries.date) : '—'}
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
-                          {item.time_entries?.staff_profiles?.full_name ?? '—'}
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-700 text-xs">{item.description}</td>
-                        <td className="px-4 py-2.5 text-right text-slate-600 tabular-nums text-xs">{item.quantity}</td>
-                        <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums text-xs">{formatCurrency(item.unit_price)}/h</td>
-                        <td className="px-4 py-2.5 text-right font-medium text-slate-900 tabular-nums">{formatCurrency(item.amount)}</td>
-                      </tr>
-                    ))}
+                    {group.rows.map((item: any) => {
+                      const isAdjustment = !item.time_entries
+                      if (isAdjustment) {
+                        return (
+                          <tr key={item.id}>
+                            <td colSpan={5} className="px-4 py-2.5 text-slate-600 italic text-xs">{item.description}</td>
+                            <td className="px-4 py-2.5 text-right font-medium text-slate-900 tabular-nums">{formatCurrency(item.amount)}</td>
+                          </tr>
+                        )
+                      }
+                      return (
+                        <tr key={item.id}>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
+                            {item.time_entries?.date ? formatDate(item.time_entries.date) : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600 text-xs whitespace-nowrap">
+                            {item.time_entries?.staff_profiles?.full_name ?? '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-700 text-xs">{item.description}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-600 tabular-nums text-xs">{item.quantity}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-500 tabular-nums text-xs">{formatCurrency(item.unit_price)}/h</td>
+                          <td className="px-4 py-2.5 text-right font-medium text-slate-900 tabular-nums">{formatCurrency(item.amount)}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               )}

@@ -3,15 +3,23 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import {
   startOfWeek, addDays, addWeeks, subWeeks,
   eachDayOfInterval, isWeekend, format, parseISO, isToday,
 } from 'date-fns'
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, Plus, Info } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, Plus, Info, Map as MapIcon, CalendarPlus, X, BarChart3, Search } from 'lucide-react'
+
+// Leaflet relies on window/document — load the map component client-side only.
+const FieldScheduleMap = dynamic(() => import('./field-schedule-map'), {
+  ssr: false,
+  loading: () => <div className="h-[480px] rounded-md border border-slate-200 bg-slate-50 flex items-center justify-center text-sm text-slate-500">Loading map…</div>,
+})
 import { Button } from '@/components/ui/button'
 import { StaffAvatar, StaffAvatarStack } from '@/components/ui/staff-avatar'
 import { createClient } from '@/lib/supabase/client'
 import { ScheduleEntryModal } from './schedule-entry-modal'
+import { PipelineBreakdownChart } from './pipeline-breakdown-chart'
 import type { ScheduleEntryFull, FieldScheduleStatus } from '@/types/database'
 
 interface StaffOption { id: string; full_name: string; role?: string }
@@ -69,8 +77,19 @@ function StatusBadge({ status }: { status: FieldScheduleStatus }) {
 
 const DAILY_TARGET = 8
 
-function SurveyorSummary({ entries }: { entries: ScheduleEntryFull[] }) {
+function SurveyorSummary({
+  entries,
+  fieldSurveyors,
+}: {
+  entries: ScheduleEntryFull[]
+  fieldSurveyors: StaffOption[]
+}) {
+  // Seed the map with every active field surveyor at 0h so anyone without
+  // allocations still appears in the summary (makes gaps obvious).
   const map = new Map<string, { name: string; hours: number }>()
+  for (const fs of fieldSurveyors) {
+    map.set(fs.id, { name: fs.full_name, hours: 0 })
+  }
   for (const entry of entries) {
     const hrs = Number(entry.hours ?? 0)
     for (const s of entry.field_surveyors) {
@@ -97,21 +116,23 @@ function SurveyorSummary({ entries }: { entries: ScheduleEntryFull[] }) {
       </div>
       <div className="flex flex-wrap gap-2">
         {surveyors.map(s => {
-          const short = Math.max(0, DAILY_TARGET - s.hours)
+          const diff = s.hours - DAILY_TARGET
           const label = s.name.split(' ').map((p, i) => i === 0 ? p : p[0] + '.').join(' ')
+          const dot =
+            diff === 0
+              ? 'bg-emerald-500'
+              : diff < 0
+              ? 'bg-amber-500'
+              : 'bg-rose-500'
           return (
             <span
               key={s.name}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
-                short === 0
-                  ? 'bg-green-100 text-green-800'
-                  : short <= 4
-                  ? 'bg-amber-100 text-amber-800'
-                  : 'bg-red-100 text-red-800'
-              }`}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-stone-100 text-stone-700 border border-stone-200"
             >
+              <span aria-hidden className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
               {label} · {s.hours}h
-              {short > 0 && <span className="opacity-70">({short}h short)</span>}
+              {diff < 0 && <span className="text-stone-500">({-diff}h short)</span>}
+              {diff > 0 && <span className="text-stone-500">(+{diff}h over)</span>}
             </span>
           )
         })}
@@ -420,19 +441,75 @@ export function FieldScheduleBoard({
   const [prefillDate, setPrefillDate]   = useState('')
   const [sortCol, setSortCol]           = useState<SortCol | null>(null)
   const [sortDir, setSortDir]           = useState<SortDir>('asc')
+  const [showMap, setShowMap]           = useState(false)
+  const [showChart, setShowChart]       = useState(false)
+  const [searchTerm, setSearchTerm]     = useState('')
+  const [extraDays, setExtraDays]       = useState<Set<string>>(new Set())
+  const [addDayMenuOpen, setAddDayMenuOpen] = useState(false)
+  const [extraWeeks, setExtraWeeks]     = useState(0)
 
   const weekStart = parseISO(weekStartStr)
-  const weekEnd   = addDays(weekStart, 11) // 2 weeks Mon–Fri: Mon+11 = Fri of week 2
+  const weekEnd   = addDays(weekStart, 13 + extraWeeks * 7) // 2 weeks + any added weeks
 
-  // All 10 working days in the two-week window
-  const days = eachDayOfInterval({ start: weekStart, end: weekEnd })
-    .filter(d => !isWeekend(d))
+  // Apply search filter (job number or suburb, case-insensitive)
+  const q = searchTerm.trim().toLowerCase()
+  const filteredEntries = q
+    ? initialEntries.filter(e => {
+        const job = e.projects?.job_number?.toLowerCase() ?? ''
+        const suburb = e.projects?.suburb?.toLowerCase() ?? ''
+        return job.includes(q) || suburb.includes(q)
+      })
+    : initialEntries
 
   // Group entries by date string
   const entriesByDate: Record<string, ScheduleEntryFull[]> = {}
-  for (const entry of initialEntries) {
+  for (const entry of filteredEntries) {
     if (!entriesByDate[entry.date]) entriesByDate[entry.date] = []
     entriesByDate[entry.date].push(entry)
+  }
+
+  // Weekday backbone (Mon–Fri × 2 weeks). Weekend days are opt-in.
+  const weekdayDays = eachDayOfInterval({ start: weekStart, end: weekEnd })
+    .filter(d => !isWeekend(d))
+
+  // Weekend days are shown if they already have entries OR were manually added.
+  const weekendDays = eachDayOfInterval({ start: weekStart, end: weekEnd })
+    .filter(d => isWeekend(d))
+  const visibleWeekendDays = weekendDays.filter(d => {
+    const ds = format(d, 'yyyy-MM-dd')
+    return extraDays.has(ds) || (entriesByDate[ds]?.length ?? 0) > 0
+  })
+
+  const days = [...weekdayDays, ...visibleWeekendDays].sort(
+    (a, b) => a.getTime() - b.getTime()
+  )
+
+  const hideableWeekendDates = new Set(
+    weekendDays
+      .map(d => format(d, 'yyyy-MM-dd'))
+      .filter(ds => extraDays.has(ds) && (entriesByDate[ds]?.length ?? 0) === 0)
+  )
+
+  const addableWeekendDays = weekendDays.filter(d => {
+    const ds = format(d, 'yyyy-MM-dd')
+    return !extraDays.has(ds) && (entriesByDate[ds]?.length ?? 0) === 0
+  })
+
+  function hideWeekendDay(dateStr: string) {
+    setExtraDays(prev => {
+      const next = new Set(prev)
+      next.delete(dateStr)
+      return next
+    })
+  }
+
+  function showWeekendDay(dateStr: string) {
+    setExtraDays(prev => {
+      const next = new Set(prev)
+      next.add(dateStr)
+      return next
+    })
+    setAddDayMenuOpen(false)
   }
 
   function handleSort(col: SortCol) {
@@ -453,6 +530,7 @@ export function FieldScheduleBoard({
     } else {
       target = subWeeks(weekStart, 1)
     }
+    setExtraWeeks(0)
     router.push(`/fieldwork?week=${format(target, 'yyyy-MM-dd')}`)
   }
 
@@ -468,13 +546,13 @@ export function FieldScheduleBoard({
     setModalOpen(true)
   }
 
-  const week1Label = `${format(days[0], 'd MMM')} – ${format(days[4], 'd MMM yyyy')}`
-  const week2Label = `${format(days[5], 'd MMM')} – ${format(days[9], 'd MMM yyyy')}`
+  const week1Label = `${format(weekdayDays[0], 'd MMM')} – ${format(weekdayDays[4], 'd MMM yyyy')}`
+  const week2Label = `${format(weekdayDays[5], 'd MMM')} – ${format(weekdayDays[9], 'd MMM yyyy')}`
 
-  function ThSort({ col, children, className = '' }: { col: SortCol; children: React.ReactNode; className?: string }) {
+  function ThSort({ col, children, className = '', center = false }: { col: SortCol; children: React.ReactNode; className?: string; center?: boolean }) {
     return (
       <th
-        className={`text-left px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide cursor-pointer select-none hover:text-slate-700 hover:bg-slate-100 transition-colors ${className}`}
+        className={`${center ? 'text-center' : 'text-left'} px-4 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide cursor-pointer select-none hover:text-slate-700 hover:bg-slate-100 transition-colors ${className}`}
         onClick={() => handleSort(col)}
       >
         <span className="inline-flex items-center">
@@ -495,6 +573,92 @@ export function FieldScheduleBoard({
           <p className="text-sm text-slate-500 mt-0.5">{week1Label} &nbsp;·&nbsp; {week2Label}</p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Search job # or suburb…"
+              className="h-9 pl-8 pr-7 w-56 rounded-md border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                aria-label="Clear search"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {canEdit && addableWeekendDays.length > 0 && (
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAddDayMenuOpen(o => !o)}
+                title="Reveal a weekend day for occasional weekend work"
+              >
+                <CalendarPlus className="h-4 w-4 mr-1" />
+                Add a Day
+              </Button>
+              {addDayMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setAddDayMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
+                    <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Weekend Days
+                    </div>
+                    {addableWeekendDays.map(d => {
+                      const ds = format(d, 'yyyy-MM-dd')
+                      return (
+                        <button
+                          key={ds}
+                          type="button"
+                          onClick={() => showWeekendDay(ds)}
+                          className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-700"
+                        >
+                          {format(d, 'EEEE d MMM')}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setExtraWeeks(n => n + 1)}
+            title="Show another week of days at the bottom of the schedule"
+          >
+            <CalendarPlus className="h-4 w-4 mr-1" />
+            Add Week
+          </Button>
+          <Button
+            variant={showChart ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowChart(s => !s)}
+            title="Toggle pipeline breakdown chart"
+          >
+            <BarChart3 className="h-4 w-4 mr-1" />
+            Chart
+          </Button>
+          <Button
+            variant={showMap ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowMap(s => !s)}
+            title="Toggle map view of scheduled sites"
+          >
+            <MapIcon className="h-4 w-4 mr-1" />
+            Map
+          </Button>
           <Button variant="outline" size="sm" onClick={() => navigateWeek('prev')}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -507,6 +671,27 @@ export function FieldScheduleBoard({
         </div>
       </div>
 
+      {showMap && (
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <FieldScheduleMap entries={filteredEntries} />
+        </div>
+      )}
+
+      {showChart && (
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-700">Pipeline – Breakdown</h3>
+            <span className="text-xs text-slate-400">Hours per day, by status</span>
+          </div>
+          <PipelineBreakdownChart
+            entries={filteredEntries}
+            startDate={weekStartStr}
+            days={14 + extraWeeks * 7}
+            dailyCapacityHours={Math.max(1, fieldSurveyors.length) * 8}
+          />
+        </div>
+      )}
+
       {/* Day sections */}
       {days.map(day => {
         const dateStr = format(day, 'yyyy-MM-dd')
@@ -518,24 +703,39 @@ export function FieldScheduleBoard({
           <div key={dateStr} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
 
             {/* Day header */}
-            <div className={`flex items-center justify-between px-5 py-3 border-b border-slate-100 ${today ? 'bg-blue-50' : 'bg-slate-50'}`}>
+            <div className={`flex items-center justify-between px-5 py-3 border-b border-slate-100 ${today ? 'bg-dlcs-sidebar-bg border-l-4 border-l-dlcs-brand pl-4' : 'bg-slate-50'}`}>
               <div className="flex items-center gap-2">
-                <span className={`text-sm font-semibold ${today ? 'text-blue-700' : 'text-slate-700'}`}>
+                <span className={`text-sm font-semibold ${today ? 'text-white' : 'text-slate-700'}`}>
                   {format(day, 'EEEE d MMMM yyyy')}
                 </span>
                 {today && (
-                  <span className="text-xs font-medium bg-blue-600 text-white px-1.5 py-0.5 rounded">Today</span>
+                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] bg-dlcs-brand text-white px-2 py-0.5 rounded-full">Today</span>
                 )}
               </div>
-              {canEdit && (
-                <button
-                  onClick={() => openAdd(dateStr)}
-                  className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-200 px-2 py-1 rounded transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Entry
-                </button>
-              )}
+              <div className="flex items-center gap-1">
+                {canEdit && (
+                  <button
+                    onClick={() => openAdd(dateStr)}
+                    className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors ${
+                      today
+                        ? 'text-dlcs-nav-text hover:text-white hover:bg-dlcs-sidebar-active'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add Entry
+                  </button>
+                )}
+                {hideableWeekendDates.has(dateStr) && (
+                  <button
+                    onClick={() => hideWeekendDay(dateStr)}
+                    className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors"
+                    title="Hide this weekend day"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Entries table */}
@@ -550,11 +750,11 @@ export function FieldScheduleBoard({
                       <th className="px-1 py-2 w-6" />
                       <ThSort col="task">Task</ThSort>
                       <ThSort col="resources">Resources</ThSort>
-                      <ThSort col="hours" className="whitespace-nowrap">Hours</ThSort>
-                      <ThSort col="surveyors">Field Surveyor(s)</ThSort>
+                      <ThSort col="hours" center className="whitespace-nowrap">Hours</ThSort>
+                      <ThSort col="surveyors" center>Field</ThSort>
                       <ThSort col="address">Address</ThSort>
-                      <ThSort col="job_manager" className="whitespace-nowrap">Job Manager</ThSort>
-                      <ThSort col="office_surveyor" className="whitespace-nowrap">Office Surveyor</ThSort>
+                      <ThSort col="job_manager" center className="whitespace-nowrap">Manager</ThSort>
+                      <ThSort col="office_surveyor" center className="whitespace-nowrap">Office</ThSort>
                       <ThSort col="status">Status</ThSort>
                       <ThSort col="client">Client</ThSort>
                       <ThSort col="notes">Notes</ThSort>
@@ -589,22 +789,26 @@ export function FieldScheduleBoard({
                             {entry.project_tasks?.title ?? '—'}
                           </td>
                           <td className="px-4 py-2.5 text-slate-600 text-xs">{resourceNames}</td>
-                          <td className="px-4 py-2.5 whitespace-nowrap">
-                            <HoursCell entry={entry} onSave={updateHoursAndTime} disabled={!canEdit} />
+                          <td className="px-4 py-2.5 whitespace-nowrap text-center">
+                            <div className="inline-flex justify-center">
+                              <HoursCell entry={entry} onSave={updateHoursAndTime} disabled={!canEdit} />
+                            </div>
                           </td>
-                          <td className="px-4 py-2.5">
-                            <SurveyorSelect entry={entry} allStaff={allStaff} onSave={updateSurveyors} disabled={!canEdit} />
+                          <td className="px-4 py-2.5 text-center">
+                            <div className="inline-flex justify-center">
+                              <SurveyorSelect entry={entry} allStaff={allStaff} onSave={updateSurveyors} disabled={!canEdit} />
+                            </div>
                           </td>
                           <td className="px-4 py-2.5 text-slate-600 text-xs max-w-[180px] truncate">{address}</td>
-                          <td className="px-4 py-2.5">
+                          <td className="px-4 py-2.5 text-center">
                             {proj?.job_manager?.full_name
-                              ? <StaffAvatar name={proj.job_manager.full_name} size="sm" />
+                              ? <div className="inline-flex justify-center"><StaffAvatar name={proj.job_manager.full_name} size="sm" /></div>
                               : <span className="text-slate-300 text-xs">—</span>
                             }
                           </td>
-                          <td className="px-4 py-2.5">
+                          <td className="px-4 py-2.5 text-center">
                             {entry.office_surveyor?.full_name
-                              ? <StaffAvatar name={entry.office_surveyor.full_name} size="sm" />
+                              ? <div className="inline-flex justify-center"><StaffAvatar name={entry.office_surveyor.full_name} size="sm" /></div>
                               : <span className="text-slate-300 text-xs">—</span>
                             }
                           </td>
@@ -626,7 +830,7 @@ export function FieldScheduleBoard({
               </div>
             )}
 
-            <SurveyorSummary entries={dayEntries} />
+            <SurveyorSummary entries={dayEntries} fieldSurveyors={fieldSurveyors} />
           </div>
         )
       })}

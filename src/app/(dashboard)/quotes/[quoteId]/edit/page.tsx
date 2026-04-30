@@ -21,8 +21,10 @@ export default async function EditQuotePage({
       .select(`
         id, quote_number, status, project_id, client_id,
         contact_name, contact_phone, contact_email,
-        site_address, suburb, lot_number, plan_number, job_type,
-        notes, valid_until
+        site_address, suburb, state, postcode,
+        lot_number, section_number, plan_number,
+        lga, parish, county,
+        job_type, notes, valid_until
       `)
       .eq('id', quoteId)
       .single(),

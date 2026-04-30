@@ -4,19 +4,26 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
-import { resolveRate } from '@/lib/utils/rate-calculator'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2, X } from 'lucide-react'
 import type { ProjectRate } from './my-work-board'
 
+interface RoleOption {
+  role_key: string
+  label: string
+  hourly_rate: number
+}
+
 interface Props {
   taskId: string
   projectId: string
   staffId: string
+  staffRole: string | null
   defaultHourlyRate: number
   feeType: string
   projectRates: ProjectRate[]
+  roleRates: RoleOption[]
   defaultDescription?: string
   onLogged: (hours: number) => void
   onCancel: () => void
@@ -26,9 +33,11 @@ export function InlineTimeLog({
   taskId,
   projectId,
   staffId,
+  staffRole,
   defaultHourlyRate,
   feeType,
   projectRates,
+  roleRates,
   defaultDescription,
   onLogged,
   onCancel,
@@ -38,16 +47,14 @@ export function InlineTimeLog({
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [hours, setHours] = useState('')
   const [description, setDescription] = useState(defaultDescription ?? '')
+  const [actingRole, setActingRole] = useState(staffRole ?? '')
 
-  const ratesForProject = projectRates
-    .filter(r => r.projectId === projectId)
-    .map(r => ({ staff_id: staffId, hourly_rate: r.hourlyRate }))
-
-  const resolvedRate = resolveRate(
-    staffId,
-    [{ id: staffId, default_hourly_rate: defaultHourlyRate }],
-    ratesForProject,
-  )
+  // Default rate (when acting role == staff role): use the project override prop
+  const defaultRoleOverride = projectRates.find(r => r.projectId === projectId)?.hourlyRate
+  const isDefaultRole = actingRole === (staffRole ?? '')
+  const resolvedRate = isDefaultRole
+    ? (defaultRoleOverride ?? defaultHourlyRate)
+    : (roleRates.find(r => r.role_key === actingRole)?.hourly_rate ?? defaultHourlyRate)
 
   const hoursNum = parseFloat(hours)
   const isValid = !isNaN(hoursNum) && hoursNum > 0 && date
@@ -59,6 +66,20 @@ export function InlineTimeLog({
     setSaving(true)
     const db = createClient() as any
 
+    // For non-default roles, look up the project-specific override before inserting
+    let rate = resolvedRate
+    if (!isDefaultRole && actingRole) {
+      const { data: override } = await db
+        .from('project_role_rates')
+        .select('hourly_rate')
+        .eq('project_id', projectId)
+        .eq('role_key', actingRole)
+        .maybeSingle()
+      if (override?.hourly_rate) rate = Number(override.hourly_rate)
+    }
+
+    const actingRoleToSave = actingRole && actingRole !== (staffRole ?? null) ? actingRole : null
+
     const { error } = await db.from('time_entries').insert({
       project_id: projectId,
       task_id: taskId,
@@ -67,7 +88,8 @@ export function InlineTimeLog({
       hours: hoursNum,
       description: description.trim() || null,
       is_billable: feeType !== 'non_billable',
-      rate_at_time: resolvedRate,
+      rate_at_time: rate,
+      acting_role: actingRoleToSave,
     })
 
     setSaving(false)
@@ -103,6 +125,22 @@ export function InlineTimeLog({
           className="w-24 text-sm"
         />
       </div>
+      {roleRates.length > 0 && (
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-500">Acting As</label>
+          <select
+            value={actingRole}
+            onChange={e => setActingRole(e.target.value)}
+            className="rounded-md border border-input bg-background px-2 py-1.5 text-sm h-9"
+          >
+            {roleRates.map(r => (
+              <option key={r.role_key} value={r.role_key}>
+                {r.label}{staffRole === r.role_key ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="space-y-1 flex-1 min-w-[160px]">
         <label className="text-xs font-medium text-slate-500">Task Description</label>
         <Input

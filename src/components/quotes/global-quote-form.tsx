@@ -8,10 +8,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatCurrency } from '@/lib/utils/formatters'
+import { formatCurrency, formatAUPhone, stripJobNumberPrefix } from '@/lib/utils/formatters'
 import { Plus, Trash2, Loader2 } from 'lucide-react'
 import { JOB_TYPE_OPTIONS } from '@/lib/constants/job-types'
 import { NewClientModal } from '@/components/clients/new-client-modal'
+import { AddressAutocomplete } from '@/components/ui/address-autocomplete'
 import type { Client } from '@/types/database'
 
 interface LineItem {
@@ -38,8 +39,14 @@ interface GlobalQuoteFormProps {
     contact_email: string | null
     site_address: string | null
     suburb:       string | null
+    state:        string | null
+    postcode:     string | null
     lot_number:   string | null
+    section_number: string | null
     plan_number:  string | null
+    lga:          string | null
+    parish:       string | null
+    county:       string | null
     job_type:     string | null
     notes:        string | null
     valid_until:  string | null
@@ -67,12 +74,26 @@ export function GlobalQuoteForm({ projects, clients: initialClients, quote, init
   const [projectId,    setProjectId]    = useState(quote?.project_id   ?? initialProjectId ?? '')
   const [clientId,     setClientId]     = useState(quote?.client_id    ?? '')
   const [contactName,  setContactName]  = useState(quote?.contact_name  ?? '')
-  const [contactPhone, setContactPhone] = useState(quote?.contact_phone ?? '')
+  const [contactPhone, setContactPhone] = useState(formatAUPhone(quote?.contact_phone ?? ''))
   const [contactEmail, setContactEmail] = useState(quote?.contact_email ?? '')
-  const [siteAddress,  setSiteAddress]  = useState(quote?.site_address  ?? '')
-  const [suburb,       setSuburb]       = useState(quote?.suburb        ?? '')
-  const [lotNumber,    setLotNumber]    = useState(quote?.lot_number    ?? '')
-  const [planNumber,   setPlanNumber]   = useState(quote?.plan_number   ?? '')
+  const [siteAddress,  setSiteAddress]  = useState(quote?.site_address    ?? '')
+  const [suburb,       setSuburb]       = useState(quote?.suburb          ?? '')
+  const [stateVal,     setStateVal]     = useState(quote?.state           ?? '')
+  const [postcode,     setPostcode]     = useState(quote?.postcode        ?? '')
+  const [lotNumber,    setLotNumber]    = useState(quote?.lot_number      ?? '')
+  const [sectionNumber, setSectionNumber] = useState(quote?.section_number ?? '')
+  const [planNumber,   setPlanNumber]   = useState(quote?.plan_number     ?? '')
+  const [lga,          setLga]          = useState(quote?.lga             ?? '')
+  const [parish,       setParish]       = useState(quote?.parish          ?? '')
+  const [county,       setCounty]       = useState(quote?.county          ?? '')
+  const [lotLookupInProgress, setLotLookupInProgress] = useState(false)
+
+  useEffect(() => {
+    if (!lotLookupInProgress) return
+    function beforeUnload(e: BeforeUnloadEvent) { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => window.removeEventListener('beforeunload', beforeUnload)
+  }, [lotLookupInProgress])
   const [jobType,      setJobType]      = useState(quote?.job_type      ?? 'survey')
   const [notes,        setNotes]        = useState(quote?.notes         ?? '')
   const [validUntil,   setValidUntil]   = useState(quote?.valid_until   ?? '')
@@ -106,7 +127,7 @@ export function GlobalQuoteForm({ projects, clients: initialClients, quote, init
     const client = clientsList.find(c => c.id === clientId)
     if (!client) return
     if (!contactName)                         setContactName(client.name)
-    if (!contactPhone && client.phone)        setContactPhone(client.phone)
+    if (!contactPhone && client.phone)        setContactPhone(formatAUPhone(client.phone))
     if (!contactEmail && client.email)        setContactEmail(client.email)
     if (!siteAddress && client.address_line1) setSiteAddress(client.address_line1)
     if (!suburb && client.suburb)             setSuburb(client.suburb)
@@ -147,10 +168,16 @@ export function GlobalQuoteForm({ projects, clients: initialClients, quote, init
       contact_name:  contactName.trim()  || null,
       contact_phone: contactPhone.trim() || null,
       contact_email: contactEmail.trim() || null,
-      site_address:  siteAddress.trim()  || null,
-      suburb:        suburb.trim()       || null,
-      lot_number:    lotNumber.trim()    || null,
-      plan_number:   planNumber.trim()   || null,
+      site_address:   siteAddress.trim()   || null,
+      suburb:         suburb.trim()        || null,
+      state:          stateVal.trim()      || null,
+      postcode:       postcode.trim()      || null,
+      lot_number:     lotNumber.trim()     || null,
+      section_number: sectionNumber.trim() || null,
+      plan_number:    planNumber.trim()    || null,
+      lga:            lga.trim()           || null,
+      parish:         parish.trim()        || null,
+      county:         county.trim()        || null,
       job_type:      jobType || null,
       notes:         notes.trim()        || null,
       valid_until:   validUntil          || null,
@@ -215,7 +242,7 @@ export function GlobalQuoteForm({ projects, clients: initialClients, quote, init
             >
               <option value="">— No job linked —</option>
               {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.job_number} — {p.title}</option>
+                <option key={p.id} value={p.id}>{p.job_number} — {stripJobNumberPrefix(p.title, p.job_number)}</option>
               ))}
             </select>
             <p className="text-xs text-slate-400">Linking a job auto-fills client details.</p>
@@ -271,7 +298,7 @@ export function GlobalQuoteForm({ projects, clients: initialClients, quote, init
           </div>
           <div className="space-y-1">
             <Label htmlFor="contact_phone">Phone</Label>
-            <Input id="contact_phone" value={contactPhone} onChange={e => setContactPhone(e.target.value)} placeholder="e.g. 0412 345 678" />
+            <Input id="contact_phone" value={contactPhone} onChange={e => setContactPhone(formatAUPhone(e.target.value))} placeholder="e.g. 0412 345 678" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="contact_email">Email</Label>
@@ -283,23 +310,89 @@ export function GlobalQuoteForm({ projects, clients: initialClients, quote, init
       {/* Site Details */}
       <Card>
         <CardHeader><CardTitle>Site Details</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2 space-y-1">
+        <CardContent className="space-y-4">
+
+          <div className="space-y-1">
             <Label htmlFor="site_address">Site Address</Label>
-            <Input id="site_address" value={siteAddress} onChange={e => setSiteAddress(e.target.value)} placeholder="Street address" />
+            <AddressAutocomplete
+              id="site_address"
+              value={siteAddress}
+              onChange={setSiteAddress}
+              onLotLookupStart={() => setLotLookupInProgress(true)}
+              onLotLookupEnd={()   => setLotLookupInProgress(false)}
+              onSelect={pick => {
+                setSiteAddress(pick.streetAddress)
+                if (pick.suburb)   setSuburb(pick.suburb)
+                if (pick.state)    setStateVal(pick.state)
+                if (pick.postcode) setPostcode(pick.postcode)
+                if (pick.lga)      setLga(pick.lga)
+                if (pick.parish)   setParish(pick.parish)
+                if (pick.county)   setCounty(pick.county)
+                if (pick.lot)      setLotNumber(pick.lot)
+                if (pick.plan)     setPlanNumber(pick.plan)
+                if (pick.section)  setSectionNumber(pick.section)
+                else               setSectionNumber('-')
+              }}
+              placeholder="Start typing a NSW address…"
+            />
+            <p className="text-xs text-slate-500">Suggestions pulled from NSW Spatial Services. Select one to auto-fill suburb, lot, plan, LGA and more.</p>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="suburb">Suburb</Label>
-            <Input id="suburb" value={suburb} onChange={e => setSuburb(e.target.value)} />
+
+          {lotLookupInProgress && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <Loader2 className="h-3.5 w-3.5 mt-0.5 shrink-0 animate-spin" />
+              <div>
+                <p className="font-medium">Looking up Lot, Section, Plan, LGA, Parish and County…</p>
+                <p className="text-amber-700">This can take up to 15 seconds. Please don't leave the page — the fields below will fill automatically.</p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_160px] gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="suburb">Suburb</Label>
+              <Input id="suburb" value={suburb} onChange={e => setSuburb(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="state">State</Label>
+              <Input id="state" value={stateVal} onChange={e => setStateVal(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="postcode">Postcode</Label>
+              <Input id="postcode" value={postcode} onChange={e => setPostcode(e.target.value)} />
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="lot_number">Lot Number</Label>
-            <Input id="lot_number" value={lotNumber} onChange={e => setLotNumber(e.target.value)} placeholder="e.g. 5" />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+            <div className="space-y-1">
+              <Label htmlFor="lot_number" className="text-slate-500">Lot Number</Label>
+              <Input id="lot_number" value={lotNumber} onChange={e => setLotNumber(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="section_number" className="text-slate-500">Section Number</Label>
+              <Input id="section_number" value={sectionNumber} onChange={e => setSectionNumber(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="plan_number" className="text-slate-500">Plan Number</Label>
+              <Input id="plan_number" value={planNumber} onChange={e => setPlanNumber(e.target.value)} />
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="plan_number">Plan Number</Label>
-            <Input id="plan_number" value={planNumber} onChange={e => setPlanNumber(e.target.value)} placeholder="e.g. DP123456" />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="lga" className="text-slate-500">LGA</Label>
+              <Input id="lga" value={lga} onChange={e => setLga(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="parish" className="text-slate-500">Parish</Label>
+              <Input id="parish" value={parish} onChange={e => setParish(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="county" className="text-slate-500">County</Label>
+              <Input id="county" value={county} onChange={e => setCounty(e.target.value)} />
+            </div>
           </div>
+
         </CardContent>
       </Card>
 
@@ -403,11 +496,13 @@ export function GlobalQuoteForm({ projects, clients: initialClients, quote, init
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="flex gap-3">
-        <Button type="submit" disabled={submitting}>
-          {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+        <Button type="submit" disabled={submitting || lotLookupInProgress}>
+          {(submitting || lotLookupInProgress) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           {submitting
             ? (isEdit ? 'Saving…' : 'Creating…')
-            : (isEdit ? 'Save Changes' : 'Create Quote')}
+            : lotLookupInProgress
+              ? 'Waiting for address details…'
+              : (isEdit ? 'Save Changes' : 'Create Quote')}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
       </div>

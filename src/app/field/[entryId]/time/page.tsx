@@ -18,7 +18,7 @@ export default async function TimeLogPage({
 
   const { data: staffProfile } = await db
     .from('staff_profiles')
-    .select('id, full_name')
+    .select('id, full_name, role')
     .eq('email', user.email)
     .eq('is_active', true)
     .maybeSingle()
@@ -33,35 +33,39 @@ export default async function TimeLogPage({
 
   if (!entry) notFound()
 
-  const { data: existing } = await db
-    .from('field_time_logs')
-    .select('start_time, end_time, break_minutes, total_hours, is_overtime, notes')
-    .eq('entry_id', entryId)
-    .eq('staff_id', staffProfile.id)
-    .maybeSingle()
+  const [{ data: existing }, { data: roleRates }] = await Promise.all([
+    db
+      .from('field_time_logs')
+      .select('start_time, end_time, break_minutes, total_hours, is_overtime, notes, acting_role')
+      .eq('entry_id', entryId)
+      .eq('staff_id', staffProfile.id)
+      .maybeSingle(),
+    db
+      .from('role_rates')
+      .select('role_key, label, hourly_rate')
+      .eq('is_active', true)
+      .order('sort_order'),
+  ])
 
   const jobLabel = entry.projects?.job_number ?? entryId.slice(0, 8)
 
   return (
-    <div className="flex flex-col flex-1">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-4 pt-safe-top">
+    <div className="flex flex-col flex-1 bg-[#F5F4F1]">
+      {/* Header — charcoal */}
+      <div className="bg-[#2F2F33] px-4 pt-safe-top">
         <div className="flex items-center gap-2 py-3">
           <Link
             href={`/field/${entryId}`}
-            className="p-1.5 -ml-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+            className="p-1.5 -ml-1.5 rounded-lg text-[#BDBDC0] hover:bg-[#45454B] transition-colors"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-6 w-6" />
           </Link>
-          <div className="flex items-center gap-2 flex-1">
-            <Timer className="h-5 w-5 text-blue-500 shrink-0" />
-            <div>
-              <p className="text-xs text-slate-500 font-medium">{jobLabel}</p>
-              <h1 className="text-base font-bold text-slate-900">Time Log</h1>
-            </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-[#F39200] font-bold tracking-[0.18em]">{jobLabel}</p>
+            <h1 className="text-base font-bold text-white">Time Log</h1>
           </div>
           {existing && (
-            <span className="text-xs bg-blue-100 text-blue-700 font-medium px-2 py-1 rounded-full">
+            <span className="text-xs bg-[#E6EEF7] text-[#2257A3] font-semibold px-2.5 py-1 rounded-full">
               Editing
             </span>
           )}
@@ -71,8 +75,10 @@ export default async function TimeLogPage({
       <TimeLogForm
         entryId={entryId}
         staffId={staffProfile.id}
+        staffRole={(staffProfile as any).role ?? null}
         workDate={entry.date}
         existing={existing}
+        roleRates={(roleRates ?? []) as any[]}
       />
     </div>
   )

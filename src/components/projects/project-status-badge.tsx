@@ -2,17 +2,17 @@ import { Badge } from '@/components/ui/badge'
 import type { ProjectStatus } from '@/types/database'
 
 const config: Record<ProjectStatus, { label: string; className: string }> = {
-  active:    { label: 'Active',    className: 'bg-green-100 text-green-800 border-green-200' },
-  on_hold:   { label: 'On Hold',   className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-  completed: { label: 'Completed', className: 'bg-blue-100 text-blue-800 border-blue-200' },
-  cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-800 border-red-200' },
-  archived:  { label: 'Archived',  className: 'bg-slate-100 text-slate-600 border-slate-200' },
+  active:    { label: 'Active',    className: 'bg-[#E7F3EC] text-[#1F7A3F] border-transparent' },
+  on_hold:   { label: 'On Hold',   className: 'bg-[#FBF1D8] text-[#A86B0C] border-transparent' },
+  completed: { label: 'Completed', className: 'bg-[#E6EEF7] text-[#2257A3] border-transparent' },
+  cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-800 border-transparent' },
+  archived:  { label: 'Archived',  className: 'bg-[#EFEDE6] text-dlcs-ink-muted border-transparent' },
 }
 
 export function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
   const { label, className } = config[status] ?? config.active
   return (
-    <Badge variant="outline" className={className}>
+    <Badge variant="outline" className={`rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${className}`}>
       {label}
     </Badge>
   )

@@ -86,6 +86,21 @@ export default async function SettingsPage() {
       </div>
 
       <div className="mt-10 pt-8 border-t border-slate-200">
+        <h2 className="text-lg font-semibold text-slate-900 mb-1">Checklist Templates</h2>
+        <p className="text-sm text-slate-500 mb-4">
+          Create one checklist per task type (e.g. Set-out Survey, Identification Survey).
+          The checklist will be shown to the field surveyor in the Job Brief &amp; Checklists
+          section of the Field App.
+        </p>
+        <Link
+          href="/settings/checklist-templates"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded hover:bg-slate-700 transition-colors"
+        >
+          Manage Checklist Templates
+        </Link>
+      </div>
+
+      <div className="mt-10 pt-8 border-t border-slate-200">
         <h2 className="text-lg font-semibold text-slate-900 mb-1">Import Data</h2>
         <p className="text-sm text-slate-500 mb-4">
           Import clients, jobs, and timesheets from a CSV export of another system.

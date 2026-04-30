@@ -51,7 +51,7 @@ export default async function FieldworkPage({
         id, date, hours, time_of_day, status, notes, task_id, office_surveyor_id,
         project_id,
         projects (
-          id, job_number, site_address, suburb,
+          id, job_number, site_address, suburb, site_lat, site_lng,
           clients ( name, company_name ),
           job_manager:staff_profiles!job_manager_id ( id, full_name )
         ),

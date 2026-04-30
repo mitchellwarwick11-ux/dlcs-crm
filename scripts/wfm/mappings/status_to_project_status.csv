@@ -1,0 +1,7 @@
+wfm_status,project_status
+In Progress,active
+Planned,active
+On Hold,on_hold
+Completed,completed
+Cancelled,cancelled
+Archived,archived

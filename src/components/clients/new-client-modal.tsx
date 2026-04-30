@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Plus, Loader2, User, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatAUPhone } from '@/lib/utils/formatters'
 
 const quickClientSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -57,6 +58,7 @@ export function NewClientModal({ onClientCreated }: NewClientModalProps) {
         company_name: isCompany ? (values.company_name?.trim() || null) : null,
         email: values.email?.trim() || null,
         phone: values.phone?.trim() || null,
+        state: null, // Explicitly clear — DB default was 'QLD' on legacy schemas
         is_active: true,
       })
       .select()
@@ -168,7 +170,15 @@ export function NewClientModal({ onClientCreated }: NewClientModalProps) {
 
           <div className="space-y-1">
             <Label htmlFor="modal-phone">Phone</Label>
-            <Input id="modal-phone" {...register('phone')} placeholder="e.g. 0412 345 678" />
+            <Input
+              id="modal-phone"
+              placeholder="e.g. 0412 345 678"
+              {...register('phone')}
+              onChange={(e) => {
+                e.target.value = formatAUPhone(e.target.value)
+                register('phone').onChange(e)
+              }}
+            />
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
