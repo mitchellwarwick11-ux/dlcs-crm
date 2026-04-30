@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { ChevronLeft, BookOpen, Info } from 'lucide-react'
+import { InteractiveChecklist } from '@/components/field/interactive-checklist'
 
 export default async function JobBriefPage({
   params,
@@ -16,12 +17,19 @@ export default async function JobBriefPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const { data: staffProfile } = await db
+    .from('staff_profiles')
+    .select('id')
+    .eq('email', user.email)
+    .eq('is_active', true)
+    .maybeSingle()
+
   const { data: entry } = await db
     .from('field_schedule_entries')
     .select(`
       id, date, project_id, task_id,
       projects ( id, job_number, site_address, suburb, job_type ),
-      project_tasks ( id, title )
+      project_tasks ( id, title, task_definition_id )
     `)
     .eq('id', entryId)
     .maybeSingle()
@@ -29,6 +37,7 @@ export default async function JobBriefPage({
   if (!entry) notFound()
 
   const proj = entry.projects
+  const taskDefinitionId: string | null = entry.project_tasks?.task_definition_id ?? null
 
   // Look for a task-specific brief first, then a project-level brief
   const [{ data: taskBrief }, { data: projectBrief }] = await Promise.all([
@@ -45,13 +54,30 @@ export default async function JobBriefPage({
       .maybeSingle(),
   ])
 
-  // Fetch applicable checklists for this job type
-  const { data: checklists } = await db
-    .from('checklist_templates')
-    .select('id, title, items')
-    .eq('is_active', true)
-    .or(`job_type.is.null,job_type.eq.${proj?.job_type ?? 'survey'}`)
-    .order('sort_order')
+  // Fetch the checklist template for this entry's task type (one per task type).
+  const { data: checklists } = taskDefinitionId
+    ? await db
+        .from('checklist_templates')
+        .select('id, title, items')
+        .eq('is_active', true)
+        .eq('task_definition_id', taskDefinitionId)
+        .order('sort_order')
+    : { data: [] as { id: string; title: string; items: { id: string; text: string }[] }[] }
+
+  // Fetch any existing checklist submissions for this surveyor on this entry,
+  // so previously ticked items show ticked.
+  const submissionsByTemplate: Record<string, string[]> = {}
+  if (staffProfile && checklists && checklists.length > 0) {
+    const { data: subs } = await db
+      .from('checklist_submissions')
+      .select('template_id, checked_items')
+      .eq('entry_id', entryId)
+      .eq('staff_id', staffProfile.id)
+      .in('template_id', checklists.map((c: any) => c.id))
+    for (const s of (subs ?? [])) {
+      submissionsByTemplate[s.template_id] = s.checked_items ?? []
+    }
+  }
 
   const brief    = taskBrief ?? projectBrief
   const jobLabel = proj?.job_number ?? entryId.slice(0, 8)
@@ -109,12 +135,20 @@ export default async function JobBriefPage({
         )}
 
         {/* Checklists */}
-        {checklists && checklists.length > 0 && (
+        {checklists && checklists.length > 0 && staffProfile && (
           <div>
             <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-2">Checklists</p>
             <div className="space-y-3">
               {checklists.map((cl: any) => (
-                <ChecklistCard key={cl.id} title={cl.title} items={cl.items} />
+                <InteractiveChecklist
+                  key={cl.id}
+                  entryId={entryId}
+                  staffId={staffProfile.id}
+                  templateId={cl.id}
+                  title={cl.title}
+                  items={cl.items}
+                  initialChecked={submissionsByTemplate[cl.id] ?? []}
+                />
               ))}
             </div>
           </div>
@@ -126,22 +160,3 @@ export default async function JobBriefPage({
   )
 }
 
-function ChecklistCard({ title, items }: { title: string; items: { id: string; text: string }[] }) {
-  return (
-    <div className="bg-white border border-[#E8E6E0] rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-3 bg-[#FAF8F3] border-b border-[#EFEDE6]">
-        <div className="w-[3px] h-3.5 bg-[#F39200]" />
-        <p className="text-[13px] font-bold text-[#111111] flex-1">{title}</p>
-        <p className="text-[11px] font-bold text-[#6B6B6F]">0 / {items.length}</p>
-      </div>
-      <div>
-        {items.map((item, idx) => (
-          <div key={item.id} className={`flex items-center gap-3 px-4 py-3 ${idx > 0 ? 'border-t border-[#EFEDE6]' : ''}`}>
-            <div className="h-[18px] w-[18px] rounded-[5px] border-[1.5px] border-[#CFCDC5] bg-white shrink-0" />
-            <span className="text-[13px] text-[#4B4B4F]">{item.text}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
