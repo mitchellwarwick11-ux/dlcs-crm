@@ -360,6 +360,7 @@ export type Database = {
           hourly_rate: number
           sort_order: number
           is_active: boolean
+          default_checked: boolean
           created_at: string
           updated_at: string
         }

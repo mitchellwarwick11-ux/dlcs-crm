@@ -11,10 +11,9 @@ import { AddressAutocomplete } from '@/components/ui/address-autocomplete'
 import { NewClientModal } from '@/components/clients/new-client-modal'
 import { TaskBodyEditor } from '@/components/quotes/task-body-editor'
 import { GenericNotesEditor } from '@/components/quotes/generic-notes-editor'
+import { RoleRatesInlineEditor } from '@/components/quotes/role-rates-inline-editor'
 import { formatCurrency, formatAUPhone, stripJobNumberPrefix } from '@/lib/utils/formatters'
 import type { Client, FeeProposalTemplate, GenericNote, QuoteTask, RoleRate } from '@/types/database'
-
-const DEFAULT_CHECKED_ROLE_KEYS = ['registered_surveyor', 'field_surveyor', 'office_surveyor', 'drafting']
 
 // Label with optional auto-filled indicator
 function AutoLabel({ htmlFor, filled, children }: { htmlFor: string; filled: boolean; children: React.ReactNode }) {
@@ -82,7 +81,8 @@ function addDays(days: number): string {
   return d.toISOString().split('T')[0]
 }
 
-export function FeeProposalForm({ clients: initialClients, projects, templates, genericNotes: initialGenericNotes, roleRates }: FeeProposalFormProps) {
+export function FeeProposalForm({ clients: initialClients, projects, templates, genericNotes: initialGenericNotes, roleRates: initialRoleRates }: FeeProposalFormProps) {
+  const [roleRates, setRoleRates] = useState<RoleRate[]>(initialRoleRates)
   const router = useRouter()
 
   const [clientsList, setClientsList]   = useState<Client[]>(initialClients)
@@ -106,7 +106,7 @@ export function FeeProposalForm({ clients: initialClients, projects, templates, 
   const [quoteTasks, setQuoteTasks]     = useState<QuoteTask[]>([])
   const [selectedNotes, setSelectedNotes] = useState<string[]>([])
   const [selectedRoleKeys, setSelectedRoleKeys] = useState<string[]>(() =>
-    roleRates.filter(r => DEFAULT_CHECKED_ROLE_KEYS.includes(r.role_key)).map(r => r.role_key)
+    initialRoleRates.filter(r => r.default_checked).map(r => r.role_key)
   )
   const [validUntil, setValidUntil]     = useState(addDays(60))
   const [saving, setSaving]         = useState(false)
@@ -485,36 +485,13 @@ export function FeeProposalForm({ clients: initialClients, projects, templates, 
             onNotesChange={setGenericNotes}
           />
 
-          {/* ── Hourly Rates (checkable, per-role) ── */}
-          <div className="space-y-1.5">
-            <div>
-              <div className="text-sm font-medium text-slate-700">Hourly Rates</div>
-              <p className="text-xs text-slate-400">Tick the roles whose standard hourly rate should appear on this proposal.</p>
-            </div>
-            <div className="space-y-1 border border-slate-200 rounded-md p-3 bg-white">
-              {roleRates.length === 0 && (
-                <p className="text-xs text-slate-400">No active roles found. Add role rates in Settings.</p>
-              )}
-              {roleRates.map(r => (
-                <label key={r.role_key} className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={selectedRoleKeys.includes(r.role_key)}
-                    onChange={() =>
-                      setSelectedRoleKeys(prev =>
-                        prev.includes(r.role_key)
-                          ? prev.filter(k => k !== r.role_key)
-                          : [...prev, r.role_key]
-                      )
-                    }
-                    className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 accent-slate-800"
-                  />
-                  <span className="text-xs text-slate-700 leading-relaxed group-hover:text-slate-900 flex-1">{r.label}</span>
-                  <span className="text-xs text-slate-500 tabular-nums">{formatCurrency(r.hourly_rate)}/hr</span>
-                </label>
-              ))}
-            </div>
-          </div>
+          {/* ── Hourly Rates (checkable, per-role; inline manage) ── */}
+          <RoleRatesInlineEditor
+            roleRates={roleRates}
+            selected={selectedRoleKeys}
+            onSelectedChange={setSelectedRoleKeys}
+            onRoleRatesChange={setRoleRates}
+          />
 
           {/* Proposed Fee summary + Valid Until */}
           <div className="grid grid-cols-2 gap-3">
