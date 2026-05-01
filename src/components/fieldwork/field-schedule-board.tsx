@@ -321,7 +321,7 @@ function HoursCell({
   if (saving) return <span className="text-xs text-slate-400">Saving…</span>
 
   const btnBase   = 'px-1.5 py-0.5 text-[10px] font-semibold transition-colors'
-  const btnActive = 'bg-blue-600 text-white'
+  const btnActive = 'bg-dlcs-brand text-white'
   const btnIdle   = 'bg-white text-slate-500 hover:bg-slate-100'
 
   return (
@@ -335,7 +335,7 @@ function HoursCell({
         onBlur={saveHours}
         onKeyDown={handleKeyDown}
         placeholder="—"
-        className="w-12 text-sm tabular-nums text-right text-slate-700 border border-slate-200 bg-white rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-slate-300"
+        className="w-12 text-sm tabular-nums text-right text-slate-700 border border-slate-200 bg-white rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-dlcs-brand/40"
       />
       <div className="inline-flex rounded border border-slate-200 overflow-hidden">
         <button
@@ -564,7 +564,7 @@ export function FieldScheduleBoard({
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-8 space-y-10">
 
       {/* Page header + navigation */}
       <div className="flex items-center justify-between">
@@ -703,7 +703,7 @@ export function FieldScheduleBoard({
           <div key={dateStr} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
 
             {/* Day header */}
-            <div className={`flex items-center justify-between px-5 py-3 border-b border-slate-100 ${today ? 'bg-dlcs-sidebar-bg border-l-4 border-l-dlcs-brand pl-4' : 'bg-slate-50'}`}>
+            <div className={`flex items-center justify-between px-5 py-3 border-b border-slate-300 ${today ? 'bg-dlcs-sidebar-bg border-l-4 border-l-dlcs-brand pl-4' : 'bg-slate-50'}`}>
               <div className="flex items-center gap-2">
                 <span className={`text-sm font-semibold ${today ? 'text-white' : 'text-slate-700'}`}>
                   {format(day, 'EEEE d MMMM yyyy')}
@@ -743,11 +743,25 @@ export function FieldScheduleBoard({
               <div className="px-5 py-4 text-sm text-slate-400 italic">No entries scheduled.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm table-fixed">
+                  <colgroup>
+                    <col className="w-[88px]" />
+                    <col className="w-[28px]" />
+                    <col className="w-[140px]" />
+                    <col />
+                    <col className="w-[170px]" />
+                    <col className="w-[110px]" />
+                    <col />
+                    <col className="w-[80px]" />
+                    <col className="w-[80px]" />
+                    <col className="w-[110px]" />
+                    <col className="w-[140px]" />
+                    <col />
+                  </colgroup>
                   <thead>
-                    <tr className="border-b border-slate-100">
+                    <tr className="border-b border-slate-200">
                       <ThSort col="job_number" className="whitespace-nowrap">Job #</ThSort>
-                      <th className="px-1 py-2 w-6" />
+                      <th className="px-1 py-2" />
                       <ThSort col="task">Task</ThSort>
                       <ThSort col="resources">Resources</ThSort>
                       <ThSort col="hours" center className="whitespace-nowrap">Hours</ThSort>
