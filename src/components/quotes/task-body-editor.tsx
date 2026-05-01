@@ -307,7 +307,7 @@ export function TaskBodyEditor({ tasks, onChange, showPrices = false, importOpti
                 if (picked) onChange([...tasks, cloneTask(picked.task)])
                 e.target.value = ''
               }}
-              className="appearance-none rounded-full bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium pl-10 pr-9 h-10 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
+              className="appearance-none rounded-full bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium pl-10 pr-9 h-10 w-56 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
               title="Import a predefined Quote Task"
             >
               <option value="" style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Import from template…</option>
