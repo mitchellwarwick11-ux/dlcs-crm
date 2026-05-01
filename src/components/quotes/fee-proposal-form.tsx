@@ -640,9 +640,9 @@ export function FeeProposalForm({ clients: initialClients, projects, templates, 
                   <div style={{ width: '1px', height: '9px', background: '#cbd5e1', margin: '0 4px' }} />
                   <div style={{ color: '#1a1a1a', fontWeight: 700, fontSize: '9px' }}>—</div>
                 </div>
-                {(contactName || contactEmail) && (
+                {contactEmail && (
                   <div style={{ textAlign: 'right', color: '#64748b', fontSize: '7.5px', marginTop: '5px' }}>
-                    SENT: {contactName ?? ''}{contactEmail ? `  ${contactEmail}` : ''}
+                    SENT: {contactEmail}
                   </div>
                 )}
               </div>

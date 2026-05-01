@@ -438,9 +438,9 @@ export default async function PrintQuotePage({
                   <div className="meta-div" />
                   <div className="meta-val">{q.quote_number}</div>
                 </div>
-                {(q.contact_name || q.contact_email) && (
+                {q.contact_email && (
                   <div className="meta-sent">
-                    SENT: {q.contact_name ?? ''}{q.contact_email ? `  ${q.contact_email}` : ''}
+                    SENT: {q.contact_email}
                   </div>
                 )}
               </div>
