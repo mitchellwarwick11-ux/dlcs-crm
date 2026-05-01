@@ -276,27 +276,6 @@ export function TaskBodyEditor({ tasks, onChange, showPrices = false, importOpti
       ))}
 
       <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={addTask}
-          className="flex-1"
-        >
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add Quote Task
-        </Button>
-        {/* Calculator dialog — opens for the active task index */}
-        {roleRates && roleRates.length > 0 && (
-          <PriceCalculatorDialog
-            open={calcForTask !== null}
-            onOpenChange={(open) => { if (!open) setCalcForTask(null) }}
-            roleRates={roleRates}
-            onApply={(total) => {
-              if (calcForTask !== null) updateTask(calcForTask, { price: total })
-              setCalcForTask(null)
-            }}
-          />
-        )}
         {importOptions && importOptions.length > 0 && (
           <div className="relative">
             {/* Styled to match the primary "New Job" button — pill, dark, with a chevron. */}
@@ -320,6 +299,27 @@ export function TaskBodyEditor({ tasks, onChange, showPrices = false, importOpti
               <path d="M3 4.5l3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={addTask}
+          className="flex-1"
+        >
+          <Plus className="h-4 w-4 mr-1.5" />
+          Add Quote Task (Blank)
+        </Button>
+        {/* Calculator dialog — opens for the active task index */}
+        {roleRates && roleRates.length > 0 && (
+          <PriceCalculatorDialog
+            open={calcForTask !== null}
+            onOpenChange={(open) => { if (!open) setCalcForTask(null) }}
+            roleRates={roleRates}
+            onApply={(total) => {
+              if (calcForTask !== null) updateTask(calcForTask, { price: total })
+              setCalcForTask(null)
+            }}
+          />
         )}
       </div>
     </div>
