@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -46,12 +46,36 @@ interface Project {
   county?: string | null
 }
 
+interface QuoteEditData {
+  id: string
+  client_id: string | null
+  project_id: string | null
+  contact_name: string | null
+  contact_phone: string | null
+  contact_email: string | null
+  site_address: string | null
+  suburb: string | null
+  state: string | null
+  postcode: string | null
+  lot_number: string | null
+  section_number: string | null
+  plan_number: string | null
+  lga: string | null
+  parish: string | null
+  county: string | null
+  selected_quote_tasks: QuoteTask[] | null
+  selected_note_items: string[] | null
+  selected_role_keys: string[] | null
+  valid_until: string | null
+}
+
 interface FeeProposalFormProps {
   clients: Client[]
   projects: Project[]
   templates: FeeProposalTemplate[]
   genericNotes: GenericNote[]
   roleRates: RoleRate[]
+  quote?: QuoteEditData
 }
 
 function formatDateStr(d: string) {
@@ -81,40 +105,49 @@ function addDays(days: number): string {
   return d.toISOString().split('T')[0]
 }
 
-export function FeeProposalForm({ clients: initialClients, projects, templates, genericNotes: initialGenericNotes, roleRates: initialRoleRates }: FeeProposalFormProps) {
+export function FeeProposalForm({ clients: initialClients, projects, templates, genericNotes: initialGenericNotes, roleRates: initialRoleRates, quote }: FeeProposalFormProps) {
+  const isEdit = !!quote
   const [roleRates, setRoleRates] = useState<RoleRate[]>(initialRoleRates)
   const router = useRouter()
 
   const [clientsList, setClientsList]   = useState<Client[]>(initialClients)
   const [genericNotes, setGenericNotes] = useState<GenericNote[]>(initialGenericNotes)
-  const [clientId, setClientId]         = useState('')
-  const [contactName, setContactName]   = useState('')
-  const [contactPhone, setContactPhone] = useState('')
-  const [contactEmail, setContactEmail] = useState('')
-  const [siteAddress, setSiteAddress]   = useState('')
-  const [suburb, setSuburb]             = useState('')
-  const [stateCode, setStateCode]       = useState('')
-  const [postcode, setPostcode]         = useState('')
-  const [lotNumber, setLotNumber]       = useState('')
-  const [sectionNumber, setSectionNumber] = useState('')
-  const [planNumber, setPlanNumber]     = useState('')
-  const [lga, setLga]                   = useState('')
-  const [parish, setParish]             = useState('')
-  const [county, setCounty]             = useState('')
+  const [clientId, setClientId]         = useState(quote?.client_id ?? '')
+  const [contactName, setContactName]   = useState(quote?.contact_name ?? '')
+  const [contactPhone, setContactPhone] = useState(quote?.contact_phone ?? '')
+  const [contactEmail, setContactEmail] = useState(quote?.contact_email ?? '')
+  const [siteAddress, setSiteAddress]   = useState(quote?.site_address ?? '')
+  const [suburb, setSuburb]             = useState(quote?.suburb ?? '')
+  const [stateCode, setStateCode]       = useState(quote?.state ?? '')
+  const [postcode, setPostcode]         = useState(quote?.postcode ?? '')
+  const [lotNumber, setLotNumber]       = useState(quote?.lot_number ?? '')
+  const [sectionNumber, setSectionNumber] = useState(quote?.section_number ?? '')
+  const [planNumber, setPlanNumber]     = useState(quote?.plan_number ?? '')
+  const [lga, setLga]                   = useState(quote?.lga ?? '')
+  const [parish, setParish]             = useState(quote?.parish ?? '')
+  const [county, setCounty]             = useState(quote?.county ?? '')
   const [lotLookupInProgress, setLotLookupInProgress] = useState(false)
-  const [relatedJobId, setRelatedJobId] = useState('')
-  const [quoteTasks, setQuoteTasks]     = useState<QuoteTask[]>([])
-  const [selectedNotes, setSelectedNotes] = useState<string[]>([])
+  const [relatedJobId, setRelatedJobId] = useState(quote?.project_id ?? '')
+  const [quoteTasks, setQuoteTasks]     = useState<QuoteTask[]>(quote?.selected_quote_tasks ?? [])
+  const [selectedNotes, setSelectedNotes] = useState<string[]>(quote?.selected_note_items ?? [])
   const [selectedRoleKeys, setSelectedRoleKeys] = useState<string[]>(() =>
-    initialRoleRates.filter(r => r.default_checked).map(r => r.role_key)
+    quote
+      ? (quote.selected_role_keys ?? [])
+      : initialRoleRates.filter(r => r.default_checked).map(r => r.role_key)
   )
-  const [validUntil, setValidUntil]     = useState(addDays(60))
+  const [validUntil, setValidUntil]     = useState(quote?.valid_until ?? addDays(60))
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState<string | null>(null)
   const [autoFilled, setAutoFilled] = useState<Set<string>>(new Set())
 
+  // In edit mode, suppress the relatedJobId / clientId auto-fill effects on initial
+  // mount so they don't overwrite the values pre-loaded from the saved quote.
+  const skipAutoFillRef = useRef(isEdit)
+  useEffect(() => { skipAutoFillRef.current = false }, [])
+
   // When a related job is selected, auto-set the client and site details to match
   useEffect(() => {
+    if (skipAutoFillRef.current) return
     if (!relatedJobId) return
     const job = projects.find(p => p.id === relatedJobId)
     if (!job) return
@@ -135,6 +168,7 @@ export function FeeProposalForm({ clients: initialClients, projects, templates, 
 
   // Auto-fill contact/site from selected client
   useEffect(() => {
+    if (skipAutoFillRef.current) return
     if (!clientId) return
     const client = clientsList.find(c => c.id === clientId)
     if (!client) return
@@ -181,6 +215,61 @@ export function FeeProposalForm({ clients: initialClients, projects, templates, 
     const supabase = createClient()
     const db = supabase as any
 
+    const gst   = Math.round(priceVal * 0.1 * 100) / 100
+    const total = Math.round((priceVal + gst) * 100) / 100
+
+    const sharedFields = {
+      client_id:            clientId || null,
+      project_id:           relatedJobId || null,
+      contact_name:         contactName || null,
+      contact_phone:        contactPhone || null,
+      contact_email:        contactEmail || null,
+      site_address:         siteAddress || null,
+      suburb:               suburb || null,
+      state:                stateCode || null,
+      postcode:             postcode || null,
+      lot_number:           lotNumber || null,
+      section_number:       sectionNumber || null,
+      plan_number:          planNumber || null,
+      lga:                  lga || null,
+      parish:               parish || null,
+      county:               county || null,
+      job_type:             cleanedTasks[0]?.title ?? null,
+      selected_note_items:    selectedNotes,
+      selected_role_keys:     selectedRoleKeys,
+      selected_quote_tasks:   cleanedTasks,
+      subtotal:             priceVal,
+      gst_amount:           gst,
+      total,
+      valid_until:          validUntil || null,
+    }
+
+    if (isEdit && quote) {
+      const { error: updateErr } = await db
+        .from('quotes')
+        .update(sharedFields)
+        .eq('id', quote.id)
+
+      if (updateErr) {
+        setError(`Failed to save changes${updateErr.message ? `: ${updateErr.message}` : '.'}`)
+        setSaving(false)
+        return
+      }
+
+      await db.from('quote_items').delete().eq('quote_id', quote.id)
+      await db.from('quote_items').insert({
+        quote_id:    quote.id,
+        description: cleanedTasks[0]?.title ?? 'Fee Proposal',
+        quantity:    1,
+        unit_price:  priceVal,
+        amount:      priceVal,
+        sort_order:  0,
+      })
+
+      router.push(`/quotes/${quote.id}`)
+      return
+    }
+
     const { data: { user } } = await supabase.auth.getUser()
 
     const { data: qNum, error: qErr } = await db.rpc('generate_quote_number')
@@ -190,41 +279,16 @@ export function FeeProposalForm({ clients: initialClients, projects, templates, 
       return
     }
 
-    const gst   = Math.round(priceVal * 0.1 * 100) / 100
-    const total = Math.round((priceVal + gst) * 100) / 100
-
     const { data: newQuote, error: insertErr } = await db
       .from('quotes')
       .insert({
+        ...sharedFields,
         quote_number:         qNum,
         status:               'draft',
         created_by:           user?.id ?? null,
-        client_id:            clientId || null,
-        project_id:           relatedJobId || null,
-        contact_name:         contactName || null,
-        contact_phone:        contactPhone || null,
-        contact_email:        contactEmail || null,
-        site_address:         siteAddress || null,
-        suburb:               suburb || null,
-        state:                stateCode || null,
-        postcode:             postcode || null,
-        lot_number:           lotNumber || null,
-        section_number:       sectionNumber || null,
-        plan_number:          planNumber || null,
-        lga:                  lga || null,
-        parish:               parish || null,
-        county:               county || null,
-        job_type:             quoteTasks[0]?.title ?? null,
         template_key:         null,
         selected_scope_items:   [] as string[],
         specified_scope_items:  [] as string[],
-        selected_note_items:    selectedNotes,
-        selected_role_keys:     selectedRoleKeys,
-        selected_quote_tasks:   cleanedTasks,
-        subtotal:             priceVal,
-        gst_amount:           gst,
-        total,
-        valid_until:          validUntil || null,
       })
       .select('id')
       .single()
@@ -237,7 +301,7 @@ export function FeeProposalForm({ clients: initialClients, projects, templates, 
 
     await db.from('quote_items').insert({
       quote_id:    newQuote.id,
-      description: quoteTasks[0]?.title ?? 'Fee Proposal',
+      description: cleanedTasks[0]?.title ?? 'Fee Proposal',
       quantity:    1,
       unit_price:  priceVal,
       amount:      priceVal,
@@ -296,7 +360,7 @@ export function FeeProposalForm({ clients: initialClients, projects, templates, 
       {/* ── LEFT PANEL ── */}
       <div className="w-1/2 overflow-y-auto border-r border-slate-200 p-6 space-y-6">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Prepare Fee Proposal</h1>
+          <h1 className="text-xl font-semibold text-slate-900">{isEdit ? 'Edit Fee Proposal' : 'Prepare Fee Proposal'}</h1>
           <p className="text-sm text-slate-500 mt-0.5">Fill in the details — the preview updates live on the right.</p>
         </div>
 
@@ -519,7 +583,7 @@ export function FeeProposalForm({ clients: initialClients, projects, templates, 
 
         <Button type="submit" disabled={saving} className="w-full">
           {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          {saving ? 'Creating…' : 'Create Fee Proposal'}
+          {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Create Fee Proposal')}
         </Button>
       </div>
 

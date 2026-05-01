@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { GlobalQuoteForm } from '@/components/quotes/global-quote-form'
+import { FeeProposalForm } from '@/components/quotes/fee-proposal-form'
+import type { FeeProposalTemplate, GenericNote, RoleRate } from '@/types/database'
 
 export default async function EditQuotePage({
   params,
@@ -15,51 +16,66 @@ export default async function EditQuotePage({
 
   const db = supabase as any
 
-  const [{ data: quote }, { data: projects }, { data: clients }] = await Promise.all([
+  const [
+    { data: quote },
+    { data: clients },
+    { data: projects },
+    { data: templates },
+    { data: genericNotes },
+    { data: roleRates },
+  ] = await Promise.all([
     db
       .from('quotes')
       .select(`
-        id, quote_number, status, project_id, client_id,
+        id, status,
+        client_id, project_id,
         contact_name, contact_phone, contact_email,
         site_address, suburb, state, postcode,
         lot_number, section_number, plan_number,
         lga, parish, county,
-        job_type, notes, valid_until
+        selected_quote_tasks, selected_note_items, selected_role_keys,
+        valid_until
       `)
       .eq('id', quoteId)
       .single(),
+    db.from('clients').select('*').eq('is_active', true).order('name'),
     db
       .from('projects')
-      .select('id, job_number, title, client_id')
+      .select('id, job_number, title, client_id, site_address, suburb, state, postcode, lot_number, section_number, plan_number, lga, parish, county')
       .in('status', ['active', 'on_hold'])
       .order('job_number', { ascending: false }),
     db
-      .from('clients')
-      .select('id, name, company_name, email, phone, address_line1, suburb')
+      .from('fee_proposal_templates')
+      .select('*')
       .eq('is_active', true)
-      .order('name'),
+      .order('label'),
+    db
+      .from('generic_notes')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order'),
+    db
+      .from('role_rates')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order'),
   ])
 
   if (!quote) notFound()
 
-  // Accepted/cancelled quotes cannot be edited
   if (quote.status === 'accepted' || quote.status === 'cancelled') {
     redirect(`/quotes/${quoteId}`)
   }
 
-  const { data: items } = await db
-    .from('quote_items')
-    .select('id, description, quantity, unit_price, amount, sort_order')
-    .eq('quote_id', quoteId)
-    .order('sort_order', { ascending: true })
-
   return (
-    <div className="p-8 max-w-3xl">
-      <h1 className="text-2xl font-semibold text-slate-900 mb-6">Edit {quote.quote_number}</h1>
-      <GlobalQuoteForm
-        projects={projects ?? []}
+    <div className="h-[calc(100vh-64px)] overflow-hidden">
+      <FeeProposalForm
         clients={clients ?? []}
-        quote={{ ...quote, items: items ?? [] }}
+        projects={projects ?? []}
+        templates={(templates ?? []) as FeeProposalTemplate[]}
+        genericNotes={(genericNotes ?? []) as GenericNote[]}
+        roleRates={(roleRates ?? []) as RoleRate[]}
+        quote={quote}
       />
     </div>
   )
