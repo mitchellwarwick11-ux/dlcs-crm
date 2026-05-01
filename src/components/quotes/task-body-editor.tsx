@@ -277,7 +277,7 @@ export function TaskBodyEditor({ tasks, onChange, showPrices = false, importOpti
 
       <div className="flex gap-2">
         {importOptions && importOptions.length > 0 && (
-          <div className="relative">
+          <div className="relative flex-1 min-w-0">
             {/* Styled to match the primary "New Job" button — pill, dark, with a chevron. */}
             <select
               value=""
@@ -286,10 +286,10 @@ export function TaskBodyEditor({ tasks, onChange, showPrices = false, importOpti
                 if (picked) onChange([...tasks, cloneTask(picked.task)])
                 e.target.value = ''
               }}
-              className="appearance-none rounded-full bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium pl-10 pr-9 h-10 w-56 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
-              title="Import a predefined Quote Task"
+              className="appearance-none rounded-full bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium pl-10 pr-9 h-10 w-full shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
+              title="Add a Quote Task from a predefined template"
             >
-              <option value="" style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Import from template…</option>
+              <option value="" style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Add Quote Task (Template)</option>
               {importOptions.map(o => (
                 <option key={o.id} value={o.id} style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>{o.label}</option>
               ))}
