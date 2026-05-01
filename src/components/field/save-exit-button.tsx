@@ -100,7 +100,7 @@ export function SaveExitButton({
     router.refresh()
   }
 
-  // â”€â”€â”€ State: already saved (with or without DNA) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── State: already saved (with or without DNA) ───────────────────────────
   if (isSaved) {
     return (
       <div className="space-y-2">
@@ -114,7 +114,7 @@ export function SaveExitButton({
           <CheckCircle2 className={`h-4 w-4 shrink-0 mt-0.5 ${didNotAttend ? 'text-[#A86B0C]' : 'text-[#1F7A3F]'}`} />
           <div className="flex-1">
             <p className={`text-[12px] font-semibold ${didNotAttend ? 'text-[#A86B0C]' : 'text-[#1F7A3F]'}`}>
-              {didNotAttend ? 'Marked: did not attend' : 'Saved'} Â· {format(parseISO(savedAt!), 'd MMM h:mm a')}
+              {didNotAttend ? 'Marked: did not attend' : 'Saved'} · {format(parseISO(savedAt!), 'd MMM h:mm a')}
             </p>
             {didNotAttend && dnaReason && (
               <p className="text-[11px] text-[#6B6B6F] mt-1 whitespace-pre-wrap">{dnaReason}</p>
@@ -129,14 +129,14 @@ export function SaveExitButton({
           disabled={busy}
           className="w-full text-[11px] text-[#9A9A9C] hover:text-[#4B4B4F] py-1"
         >
-          Need to make changes? Reopen this job â†’
+          Need to make changes? Reopen this job →
         </button>
         {error && <p className="text-[11px] text-[#A31D1D] text-center">{error}</p>}
       </div>
     )
   }
 
-  // â”€â”€â”€ State: DNA modal open â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── State: DNA modal open ────────────────────────────────────────────────
   if (showDna) {
     return (
       <div className="bg-white border border-[#D6D2C7] rounded-xl p-4 space-y-3">
@@ -168,7 +168,7 @@ export function SaveExitButton({
             className="flex-1 py-2.5 rounded-full bg-[#A86B0C] hover:bg-[#8C5808] text-white text-[13px] font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-colors disabled:opacity-60"
           >
             {busy
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Savingâ€¦</>
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
               : <>Confirm</>
             }
           </button>
@@ -184,7 +184,7 @@ export function SaveExitButton({
     )
   }
 
-  // â”€â”€â”€ State: default â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── State: default ───────────────────────────────────────────────────────
   return (
     <div className="space-y-3">
       {/* Blockers list */}
@@ -217,7 +217,7 @@ export function SaveExitButton({
         }`}
       >
         {busy
-          ? <><Loader2 className="h-4 w-4 animate-spin text-[#F39200]" /> Savingâ€¦</>
+          ? <><Loader2 className="h-4 w-4 animate-spin text-[#F39200]" /> Saving…</>
           : <><Send className={`h-4 w-4 ${!blocked ? 'text-[#F39200]' : ''}`} /> Save &amp; Exit Job</>
         }
       </button>

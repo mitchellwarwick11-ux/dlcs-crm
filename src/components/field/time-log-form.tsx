@@ -135,9 +135,9 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
         <CheckCircle2 className="h-14 w-14 text-[#1F7A3F] mb-4" />
         <p className="text-lg font-bold text-[#111111]">Time Logged</p>
         {isOvertime && (
-          <p className="text-sm text-[#A86B0C] mt-1 font-medium">Overtime recorded â€” your manager has been notified.</p>
+          <p className="text-sm text-[#A86B0C] mt-1 font-medium">Overtime recorded — your manager has been notified.</p>
         )}
-        <p className="text-sm text-[#6B6B6F] mt-1">Returning to job hubâ€¦</p>
+        <p className="text-sm text-[#6B6B6F] mt-1">Returning to job hub…</p>
       </div>
     )
   }
@@ -270,10 +270,10 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
               </p>
               {isOvertime ? (
                 <p className="text-[11px] text-[#A86B0C] font-medium">
-                  {(totalHours - 8).toFixed(2)}h overtime â€” requires manager approval
+                  {(totalHours - 8).toFixed(2)}h overtime — requires manager approval
                 </p>
               ) : (
-                <p className="text-[11px] text-[#BDBDC0]">Standard hours Â· under overtime threshold</p>
+                <p className="text-[11px] text-[#BDBDC0]">Standard hours · under overtime threshold</p>
               )}
             </div>
           </div>
@@ -343,7 +343,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
           {saving
             ? <Loader2 className="h-4 w-4 animate-spin text-[#F39200]" />
             : <CheckIcon />}
-          {saving ? 'Savingâ€¦' : existing ? 'Update Time Log' : 'Submit Time Log'}
+          {saving ? 'Saving…' : existing ? 'Update Time Log' : 'Submit Time Log'}
         </button>
 
         <div className="pb-8" />

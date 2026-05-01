@@ -88,8 +88,8 @@ export default async function FieldUpcomingPage() {
 
   const formatDateHeading = (isoDate: string) => {
     const d = parseISO(isoDate + 'T00:00:00')
-    if (isoDate === todayIso)    return `Today Â· ${format(d, 'EEE d MMM')}`
-    if (isoDate === tomorrowIso) return `Tomorrow Â· ${format(d, 'EEE d MMM')}`
+    if (isoDate === todayIso)    return `Today · ${format(d, 'EEE d MMM')}`
+    if (isoDate === tomorrowIso) return `Tomorrow · ${format(d, 'EEE d MMM')}`
     return format(d, 'EEEE, d MMMM yyyy')
   }
 
@@ -168,7 +168,7 @@ export default async function FieldUpcomingPage() {
                                   <div className="flex items-center gap-1">
                                     <span className="w-[3px] h-3.5 bg-[#F39200] inline-block" />
                                     <span className="text-xs font-semibold text-[#4B4B4F] uppercase">
-                                      {entry.time_of_day}{entry.hours != null ? ` Â· ${entry.hours}h sched` : ''}
+                                      {entry.time_of_day}{entry.hours != null ? ` · ${entry.hours}h sched` : ''}
                                     </span>
                                   </div>
                                 )}
@@ -215,7 +215,7 @@ export default async function FieldUpcomingPage() {
           href="/field"
           className="block text-center text-xs text-[#9A9A9C] hover:text-[#4B4B4F] transition-colors"
         >
-          â† Back to today
+          ← Back to today
         </Link>
       </div>
     </div>

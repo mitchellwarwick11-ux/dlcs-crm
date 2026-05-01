@@ -140,7 +140,7 @@ export default async function JobHubPage({
 
   return (
     <div className="flex flex-col flex-1 bg-[#E8E5DC]">
-      {/* Header â€” charcoal */}
+      {/* Header — charcoal */}
       <div className="bg-[#1A1A1E] px-4 pt-safe-top">
         <div className="flex items-center gap-2 py-3">
           <Link href="/field" className="p-1.5 -ml-1.5 rounded-lg text-[#BDBDC0] hover:bg-[#45454B] transition-colors">
@@ -168,13 +168,13 @@ export default async function JobHubPage({
             {entry.time_of_day && (
               <div className="flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5 text-[#BDBDC0]" />
-                <span>{entry.time_of_day.toUpperCase()}{entry.hours != null ? ` Â· ${entry.hours}h` : ''}</span>
+                <span>{entry.time_of_day.toUpperCase()}{entry.hours != null ? ` · ${entry.hours}h` : ''}</span>
               </div>
             )}
           </div>
           <p className="text-xs text-[#9A9A9C]">
             {format(parseISO(entry.date), 'EEE d MMMM yyyy')}
-            {entry.office_surveyor && ` Â· Office: ${entry.office_surveyor.full_name}`}
+            {entry.office_surveyor && ` · Office: ${entry.office_surveyor.full_name}`}
           </p>
         </div>
       </div>
@@ -196,7 +196,7 @@ export default async function JobHubPage({
             statusLabel={
               briefAcknowledged
                 ? 'Acknowledged'
-                : (briefContent ? 'Brief available â€” please acknowledge' : 'No brief â€” please acknowledge')
+                : (briefContent ? 'Brief available — please acknowledge' : 'No brief — please acknowledge')
             }
           />
 
@@ -211,7 +211,7 @@ export default async function JobHubPage({
             status={jsaDone ? 'done' : 'required'}
             statusLabel={
               jsaDone
-                ? `Completed Â· ${format(parseISO(jsaAny.submitted_at), 'd MMM h:mm a')}`
+                ? `Completed · ${format(parseISO(jsaAny.submitted_at), 'd MMM h:mm a')}`
                 : 'Required before starting'
             }
           />
@@ -228,7 +228,7 @@ export default async function JobHubPage({
             statusLabel={
               !checklistTpl
                 ? 'No checklist required'
-                : (checklistDone ? 'Submitted' : 'Required â€” Yes/No on each item')
+                : (checklistDone ? 'Submitted' : 'Required — Yes/No on each item')
             }
           />
 
@@ -267,7 +267,7 @@ export default async function JobHubPage({
             status={timeLogDone ? 'done' : 'required'}
             statusLabel={
               timeLogDone
-                ? `${timeLog!.total_hours}h logged${timeLog!.is_overtime ? ' Â· Overtime' : ''}`
+                ? `${timeLog!.total_hours}h logged${timeLog!.is_overtime ? ' · Overtime' : ''}`
                 : 'Required'
             }
             overtime={timeLog?.is_overtime}
@@ -288,7 +288,7 @@ export default async function JobHubPage({
           />
           {!isSaved && (
             <p className="text-[11px] text-[#9A9A9C] text-center mt-3">
-              Saving doesn&apos;t submit your hours yet â€” submit the day&apos;s work from the field schedule when you&apos;re done.
+              Saving doesn&apos;t submit your hours yet — submit the day&apos;s work from the field schedule when you&apos;re done.
             </p>
           )}
         </div>

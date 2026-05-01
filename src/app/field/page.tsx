@@ -113,7 +113,7 @@ export default async function FieldTodayPage() {
   const totalLoggedHours = Object.values(hoursByEntry).reduce((sum, h) => sum + h.total, 0)
 
   // Count how many of today's jobs are in each state
-  let readyCount     = 0  // saved, not yet submitted (any kind â€” attended or DNA)
+  let readyCount     = 0  // saved, not yet submitted (any kind — attended or DNA)
   let submittedCount = 0
   for (const e of entries) {
     const v = visitByEntry[e.id]
@@ -143,7 +143,7 @@ export default async function FieldTodayPage() {
 
   return (
     <div className="flex flex-col flex-1 bg-[#E8E5DC]">
-      {/* Top bar â€” charcoal with orange accent rail */}
+      {/* Top bar — charcoal with orange accent rail */}
       <div className="bg-[#1A1A1E] text-white px-5 pt-safe-top pb-5">
         <div className="flex items-center gap-3 mt-2">
           <div className="w-1 h-10 bg-[#F39200] shrink-0" />
@@ -168,9 +168,9 @@ export default async function FieldTodayPage() {
             Good {tzNow.parts.hour < 12 ? 'morning' : tzNow.parts.hour < 17 ? 'afternoon' : 'evening'}, {staffProfile.full_name.split(' ')[0]}
           </p>
           <p className="text-[13px] text-[#6B6B6F] mt-1">
-            {format(tzNow.midnightDate, 'EEEE, d MMMM yyyy')} Â· {entries.length} {entries.length === 1 ? 'job' : 'jobs'} scheduled
+            {format(tzNow.midnightDate, 'EEEE, d MMMM yyyy')} · {entries.length} {entries.length === 1 ? 'job' : 'jobs'} scheduled
             {totalLoggedHours > 0 && (
-              <> Â· <span className="text-[#1F7A3F] font-semibold">{totalLoggedHours.toFixed(2).replace(/\.?0+$/, '')}h logged</span></>
+              <> · <span className="text-[#1F7A3F] font-semibold">{totalLoggedHours.toFixed(2).replace(/\.?0+$/, '')}h logged</span></>
             )}
           </p>
         </div>
@@ -197,10 +197,10 @@ export default async function FieldTodayPage() {
                 const v = visitByEntry[entry.id]
                 const h = hoursByEntry[entry.id]
                 const loggedLabel = h
-                  ? `${h.total.toFixed(2).replace(/\.?0+$/, '')}h logged${h.isOvertime ? ' Â· OT' : ''}`
+                  ? `${h.total.toFixed(2).replace(/\.?0+$/, '')}h logged${h.isOvertime ? ' · OT' : ''}`
                   : null
 
-                // Visit-status badge â€” overrides the schedule status pill once
+                // Visit-status badge — overrides the schedule status pill once
                 // the surveyor has Saved / DNA'd / submitted.
                 let badgeLabel: string
                 let badgeColour: string
@@ -239,7 +239,7 @@ export default async function FieldTodayPage() {
                             <div className="flex items-center gap-1">
                               <span className="w-[3px] h-3.5 bg-[#F39200] inline-block" />
                               <span className="text-xs font-semibold text-[#4B4B4F] uppercase">
-                                {entry.time_of_day}{entry.hours != null ? ` Â· ${entry.hours}h sched` : ''}
+                                {entry.time_of_day}{entry.hours != null ? ` · ${entry.hours}h sched` : ''}
                               </span>
                             </div>
                           )}
@@ -303,7 +303,7 @@ export default async function FieldTodayPage() {
                 href="/field/upcoming"
                 className="text-[11px] font-semibold text-[#F39200] hover:underline"
               >
-                View all â†’
+                View all →
               </Link>
             </div>
             <div className="space-y-1.5">
@@ -316,7 +316,7 @@ export default async function FieldTodayPage() {
                     className="flex items-center gap-3 px-3.5 py-3 bg-white rounded-lg border border-[#EFEDE6] hover:border-[#F39200] transition-colors"
                   >
                     <span className="font-bold text-[13px] text-[#111111] shrink-0">
-                      {proj?.job_number ?? 'â€”'}
+                      {proj?.job_number ?? '—'}
                     </span>
                     <div className="flex-1 min-w-0">
                       {entry.project_tasks?.title && (
@@ -324,7 +324,7 @@ export default async function FieldTodayPage() {
                       )}
                       <p className="text-[11px] text-[#9A9A9C] mt-0.5">
                         {format(new Date(entry.date + 'T00:00:00'), 'EEE d MMM')}
-                        {entry.time_of_day && ` Â· ${entry.time_of_day.toUpperCase()}`}
+                        {entry.time_of_day && ` · ${entry.time_of_day.toUpperCase()}`}
                       </p>
                     </div>
                     <ChevronRight className="h-4 w-4 text-[#BDBDC0] shrink-0" />
@@ -357,7 +357,7 @@ export default async function FieldTodayPage() {
           href="/fieldwork"
           className="block text-center text-xs text-[#9A9A9C] hover:text-[#4B4B4F] transition-colors"
         >
-          â† Back to office app
+          ← Back to office app
         </Link>
       </div>
     </div>

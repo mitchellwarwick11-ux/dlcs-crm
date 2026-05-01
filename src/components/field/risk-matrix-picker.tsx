@@ -61,7 +61,7 @@ export function RiskMatrixPicker({ open, title, current, onClose, onPick }: Prop
             <div className="flex">
               <div className="w-[78px] shrink-0 bg-[#EFEDE6] border-b border-r border-[#D6D2C7] p-2">
                 <p className="text-[9px] font-bold text-[#6B6B6F] tracking-[0.12em] uppercase leading-tight">
-                  Probability â†“<br/>Consequence â†’
+                  Probability ↓<br/>Consequence →
                 </p>
               </div>
               <div className="flex-1 grid grid-cols-4">
@@ -123,7 +123,7 @@ export function RiskMatrixPicker({ open, title, current, onClose, onPick }: Prop
           </div>
 
           <p className="text-[11px] text-[#6B6B6F] mt-3 text-center px-2">
-            Pick a cell to record consequence Ã— probability. Result is the risk rating.
+            Pick a cell to record consequence × probability. Result is the risk rating.
           </p>
         </div>
       </div>

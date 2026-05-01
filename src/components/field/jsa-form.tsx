@@ -48,14 +48,14 @@ function normaliseHazards(raw: unknown): AdditionalHazard[] {
   }))
 }
 
-// â”€â”€â”€ SWMS task list from DLCS Risk Assessment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── SWMS task list from DLCS Risk Assessment ────────────────────────────────
 const SWMS_TASKS = [
   'SWMS unsuitable for task',
   'Travel/Arrive work zones',
   'Vehicle access to and from work zone',
   'Working on or adjacent to roads (close to traffic)',
   'Entry to a Rail Corridor and Danger Zone',
-  'Field survey â€“ instrument setup, public area, electrical equipment checked',
+  'Field survey – instrument setup, public area, electrical equipment checked',
   'Working around children',
   'Walking on site',
   'Using the visible laser distancer on Total Station',
@@ -80,10 +80,10 @@ const SWMS_TASKS = [
 ]
 
 const SIGNOFF_TEXT = `I confirm that:
-â€¢ The SWMS nominated has been explained and its contents are clearly understood and accepted.
-â€¢ My required qualifications to undertake this activity are current.
-â€¢ I clearly understand the controls in this SWMS must be applied as documented; otherwise, work is to cease immediately.
-â€¢ The nominated manager is responsible for OHS on this job/site and I will contact them immediately if any issues arise.`
+• The SWMS nominated has been explained and its contents are clearly understood and accepted.
+• My required qualifications to undertake this activity are current.
+• I clearly understand the controls in this SWMS must be applied as documented; otherwise, work is to cease immediately.
+• The nominated manager is responsible for OHS on this job/site and I will contact them immediately if any issues arise.`
 
 interface Props {
   entryId:    string
@@ -152,7 +152,7 @@ export function JsaForm({ entryId, staffId, staffName, staffRole, jobNumber, exi
 
   async function handleSubmit() {
     if (!hasSig && !sigRef.current?.isEmpty() === false) {
-      // If they just drew â€” check current state
+      // If they just drew — check current state
     }
     const isEmpty = sigRef.current?.isEmpty() ?? true
     // Allow resubmit with existing signature even if canvas is empty (showing old sig)
@@ -174,7 +174,7 @@ export function JsaForm({ entryId, staffId, staffName, staffRole, jobNumber, exi
       ? hazards.filter(h => !isHazardRowEmpty(h))
       : []
 
-    // Upsert â€” update if exists, insert if new
+    // Upsert — update if exists, insert if new
     const { error: dbErr } = await db
       .from('jsa_submissions')
       .upsert({
@@ -194,7 +194,7 @@ export function JsaForm({ entryId, staffId, staffName, staffRole, jobNumber, exi
     }
 
     // Generate the signed Risk Assessment PDF and drop it on the project's
-    // Documents page. Don't block the user if this fails â€” they can re-submit.
+    // Documents page. Don't block the user if this fails — they can re-submit.
     try {
       const res = await fetch(`/api/jsa/${entryId}/pdf`, { method: 'POST' })
       if (!res.ok) {
@@ -217,7 +217,7 @@ export function JsaForm({ entryId, staffId, staffName, staffRole, jobNumber, exi
       <div className="flex flex-col items-center justify-center flex-1 p-8 text-center bg-[#E8E5DC]">
         <CheckCircle2 className="h-14 w-14 text-[#1F7A3F] mb-4" />
         <p className="text-lg font-bold text-[#111111]">Risk Assessment Submitted</p>
-        <p className="text-sm text-[#6B6B6F] mt-1">Returning to job hubâ€¦</p>
+        <p className="text-sm text-[#6B6B6F] mt-1">Returning to job hub…</p>
       </div>
     )
   }
@@ -230,7 +230,7 @@ export function JsaForm({ entryId, staffId, staffName, staffRole, jobNumber, exi
         <div className="bg-white border border-[#D6D2C7] rounded-xl p-4">
           <p className="text-[10px] text-[#F39200] tracking-[0.18em] font-bold uppercase">Signed by</p>
           <p className="text-[15px] font-bold text-[#111111] mt-1">{staffName}</p>
-          <p className="text-[12px] text-[#6B6B6F]">{staffRole} Â· {jobNumber}</p>
+          <p className="text-[12px] text-[#6B6B6F]">{staffRole} · {jobNumber}</p>
         </div>
 
         {/* Specific SWMS required? */}
@@ -403,7 +403,7 @@ export function JsaForm({ entryId, staffId, staffName, staffRole, jobNumber, exi
           className="w-full py-3.5 bg-[#111111] hover:bg-black disabled:bg-[#4B4B4F] text-white font-semibold rounded-full text-sm transition-colors flex items-center justify-center gap-2"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin text-[#F39200]" /> : <ShieldCheckIcon />}
-          {saving ? 'Submittingâ€¦' : 'Submit Risk Assessment'}
+          {saving ? 'Submitting…' : 'Submit Risk Assessment'}
         </button>
 
         <div className="pb-8" />
@@ -550,7 +550,7 @@ function RatingField({
           className="w-full flex items-center justify-between border border-dashed border-[#C7C5BE] bg-[#FAFAF8] rounded-lg px-3 py-2.5 text-sm text-[#6B6B6F] hover:bg-white transition-colors"
         >
           <span>Tap to set rating</span>
-          <span className="text-xs font-semibold text-[#9A9A9C]">Open matrix â†’</span>
+          <span className="text-xs font-semibold text-[#9A9A9C]">Open matrix →</span>
         </button>
       </div>
     )

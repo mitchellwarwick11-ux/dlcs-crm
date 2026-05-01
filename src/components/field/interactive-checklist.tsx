@@ -228,7 +228,7 @@ export function InteractiveChecklist({
                   onChange={e => setComment(item.id, e.target.value)}
                   onBlur={() => commitComment(item.id)}
                   disabled={isSubmitted}
-                  placeholder="Add a commentâ€¦"
+                  placeholder="Add a comment…"
                   rows={2}
                   className="mt-2 w-full text-[13px] text-[#111111] placeholder:text-[#9A9A9C] bg-[#FAF8F3] border border-[#D6D2C7] rounded-lg px-3 py-2 resize-y disabled:opacity-60"
                 />
@@ -244,14 +244,14 @@ export function InteractiveChecklist({
             <div className="flex items-center justify-center gap-2 py-2.5 px-3 bg-[#E7F3EC] border border-[#BDE0C8] rounded-xl">
               <CheckCircle2 className="h-4 w-4 text-[#1F7A3F]" />
               <span className="text-[12px] font-semibold text-[#1F7A3F]">
-                Submitted â€” saved to project documents
+                Submitted — saved to project documents
               </span>
             </div>
             <button
               onClick={handleEdit}
               className="w-full text-[11px] text-[#9A9A9C] hover:text-[#4B4B4F] py-1"
             >
-              Need to edit? Reopen for changes â†’
+              Need to edit? Reopen for changes →
             </button>
           </div>
         ) : (
@@ -272,7 +272,7 @@ export function InteractiveChecklist({
               }`}
             >
               {submitting
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin text-[#F39200]" /> Submittingâ€¦</>
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin text-[#F39200]" /> Submitting…</>
                 : <><Send className={`h-3.5 w-3.5 ${allAnswered ? 'text-[#F39200]' : ''}`} /> Submit Checklist</>
               }
             </button>

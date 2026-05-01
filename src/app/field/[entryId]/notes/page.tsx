@@ -45,7 +45,7 @@ export default async function FieldNotesPage({
 
   return (
     <div className="flex flex-col flex-1 bg-[#E8E5DC]">
-      {/* Header â€” charcoal */}
+      {/* Header — charcoal */}
       <div className="bg-[#1A1A1E] px-4 pt-safe-top">
         <div className="flex items-center gap-2 py-3">
           <Link
