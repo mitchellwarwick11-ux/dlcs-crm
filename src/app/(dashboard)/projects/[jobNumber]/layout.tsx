@@ -89,7 +89,7 @@ export default async function ProjectLayout({
       <ProjectTabs jobNumber={jobNumber} />
 
       {/* Tab content */}
-      <div className="flex-1 bg-slate-50">
+      <div className="flex-1">
         {children}
       </div>
     </div>
