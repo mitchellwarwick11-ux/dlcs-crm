@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation'
+﻿import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { ChevronLeft, Info } from 'lucide-react'
@@ -72,9 +72,9 @@ export default async function ChecklistPage({
   const jobLabel = proj?.job_number ?? entryId.slice(0, 8)
 
   return (
-    <div className="flex flex-col flex-1 bg-[#F5F4F1]">
+    <div className="flex flex-col flex-1 bg-[#E8E5DC]">
       {/* Header */}
-      <div className="bg-[#2F2F33] px-4 pt-safe-top">
+      <div className="bg-[#1A1A1E] px-4 pt-safe-top">
         <div className="flex items-center gap-2 py-3">
           <Link
             href={`/field/${entryId}`}
@@ -107,7 +107,7 @@ export default async function ChecklistPage({
             )
           })
         ) : (
-          <div className="flex items-start gap-3 p-4 bg-white border border-[#E8E6E0] rounded-xl">
+          <div className="flex items-start gap-3 p-4 bg-white border border-[#D6D2C7] rounded-xl">
             <Info className="h-4 w-4 text-[#9A9A9C] mt-0.5 shrink-0" />
             <div>
               <p className="text-sm font-medium text-[#4B4B4F]">No checklist for this task type</p>

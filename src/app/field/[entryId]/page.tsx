@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation'
+﻿import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { format, parseISO } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
@@ -139,9 +139,9 @@ export default async function JobHubPage({
   const address = proj ? [proj.site_address, proj.suburb].filter(Boolean).join(', ') : null
 
   return (
-    <div className="flex flex-col flex-1 bg-[#F5F4F1]">
-      {/* Header — charcoal */}
-      <div className="bg-[#2F2F33] px-4 pt-safe-top">
+    <div className="flex flex-col flex-1 bg-[#E8E5DC]">
+      {/* Header â€” charcoal */}
+      <div className="bg-[#1A1A1E] px-4 pt-safe-top">
         <div className="flex items-center gap-2 py-3">
           <Link href="/field" className="p-1.5 -ml-1.5 rounded-lg text-[#BDBDC0] hover:bg-[#45454B] transition-colors">
             <ChevronLeft className="h-6 w-6" />
@@ -168,19 +168,19 @@ export default async function JobHubPage({
             {entry.time_of_day && (
               <div className="flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5 text-[#BDBDC0]" />
-                <span>{entry.time_of_day.toUpperCase()}{entry.hours != null ? ` · ${entry.hours}h` : ''}</span>
+                <span>{entry.time_of_day.toUpperCase()}{entry.hours != null ? ` Â· ${entry.hours}h` : ''}</span>
               </div>
             )}
           </div>
           <p className="text-xs text-[#9A9A9C]">
             {format(parseISO(entry.date), 'EEE d MMMM yyyy')}
-            {entry.office_surveyor && ` · Office: ${entry.office_surveyor.full_name}`}
+            {entry.office_surveyor && ` Â· Office: ${entry.office_surveyor.full_name}`}
           </p>
         </div>
       </div>
 
       {/* Hub tiles */}
-      <div className="flex-1 overflow-y-auto px-5 py-5 bg-[#F5F4F1]">
+      <div className="flex-1 overflow-y-auto px-5 py-5 bg-[#E8E5DC]">
         <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase mb-3">Actions</p>
         <div className="space-y-2.5">
 
@@ -196,7 +196,7 @@ export default async function JobHubPage({
             statusLabel={
               briefAcknowledged
                 ? 'Acknowledged'
-                : (briefContent ? 'Brief available — please acknowledge' : 'No brief — please acknowledge')
+                : (briefContent ? 'Brief available â€” please acknowledge' : 'No brief â€” please acknowledge')
             }
           />
 
@@ -211,7 +211,7 @@ export default async function JobHubPage({
             status={jsaDone ? 'done' : 'required'}
             statusLabel={
               jsaDone
-                ? `Completed · ${format(parseISO(jsaAny.submitted_at), 'd MMM h:mm a')}`
+                ? `Completed Â· ${format(parseISO(jsaAny.submitted_at), 'd MMM h:mm a')}`
                 : 'Required before starting'
             }
           />
@@ -228,7 +228,7 @@ export default async function JobHubPage({
             statusLabel={
               !checklistTpl
                 ? 'No checklist required'
-                : (checklistDone ? 'Submitted' : 'Required — Yes/No on each item')
+                : (checklistDone ? 'Submitted' : 'Required â€” Yes/No on each item')
             }
           />
 
@@ -267,7 +267,7 @@ export default async function JobHubPage({
             status={timeLogDone ? 'done' : 'required'}
             statusLabel={
               timeLogDone
-                ? `${timeLog!.total_hours}h logged${timeLog!.is_overtime ? ' · Overtime' : ''}`
+                ? `${timeLog!.total_hours}h logged${timeLog!.is_overtime ? ' Â· Overtime' : ''}`
                 : 'Required'
             }
             overtime={timeLog?.is_overtime}
@@ -288,7 +288,7 @@ export default async function JobHubPage({
           />
           {!isSaved && (
             <p className="text-[11px] text-[#9A9A9C] text-center mt-3">
-              Saving doesn&apos;t submit your hours yet — submit the day&apos;s work from the field schedule when you&apos;re done.
+              Saving doesn&apos;t submit your hours yet â€” submit the day&apos;s work from the field schedule when you&apos;re done.
             </p>
           )}
         </div>
@@ -327,7 +327,7 @@ function HubTile({
   return (
     <Link
       href={href}
-      className="flex items-center gap-3.5 p-3.5 bg-white border border-[#E8E6E0] rounded-xl hover:border-[#F39200] transition-colors active:scale-[0.99]"
+      className="flex items-center gap-3.5 p-3.5 bg-white border border-[#D6D2C7] rounded-xl hover:border-[#F39200] transition-colors active:scale-[0.99]"
     >
       <div className={`w-[3px] h-11 rounded-sm shrink-0 ${accentColor}`} />
       <div className={`w-[42px] h-[42px] rounded-[10px] flex items-center justify-center shrink-0 ${iconBg}`}>

@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation'
+﻿import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { ChevronLeft, ShieldCheck } from 'lucide-react'
@@ -55,9 +55,9 @@ export default async function SafetyPage({
   const roleLabel = ROLE_LABELS[staffProfile.role] ?? staffProfile.role
 
   return (
-    <div className="flex flex-col flex-1 bg-[#F5F4F1]">
-      {/* Header — charcoal */}
-      <div className="bg-[#2F2F33] px-4 pt-safe-top">
+    <div className="flex flex-col flex-1 bg-[#E8E5DC]">
+      {/* Header â€” charcoal */}
+      <div className="bg-[#1A1A1E] px-4 pt-safe-top">
         <div className="flex items-center gap-2 py-3">
           <Link
             href={`/field/${entryId}`}

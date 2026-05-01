@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -131,19 +131,19 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
 
   if (done) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 p-8 text-center bg-[#F5F4F1]">
+      <div className="flex flex-col items-center justify-center flex-1 p-8 text-center bg-[#E8E5DC]">
         <CheckCircle2 className="h-14 w-14 text-[#1F7A3F] mb-4" />
         <p className="text-lg font-bold text-[#111111]">Time Logged</p>
         {isOvertime && (
-          <p className="text-sm text-[#A86B0C] mt-1 font-medium">Overtime recorded — your manager has been notified.</p>
+          <p className="text-sm text-[#A86B0C] mt-1 font-medium">Overtime recorded â€” your manager has been notified.</p>
         )}
-        <p className="text-sm text-[#6B6B6F] mt-1">Returning to job hub…</p>
+        <p className="text-sm text-[#6B6B6F] mt-1">Returning to job hubâ€¦</p>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#F5F4F1]">
+    <div className="flex-1 overflow-y-auto bg-[#E8E5DC]">
       <div className="px-5 py-5 space-y-5">
 
         {/* Mode toggle */}
@@ -156,7 +156,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
               className={`py-2.5 rounded-lg text-[13px] font-bold border transition-colors ${
                 mode === 'times'
                   ? 'bg-[#111111] text-[#F39200] border-[#111111]'
-                  : 'bg-white text-[#6B6B6F] border-[#E8E6E0]'
+                  : 'bg-white text-[#6B6B6F] border-[#D6D2C7]'
               }`}
             >
               Start &amp; End Times
@@ -167,7 +167,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
               className={`py-2.5 rounded-lg text-[13px] font-bold border transition-colors ${
                 mode === 'hours'
                   ? 'bg-[#111111] text-[#F39200] border-[#111111]'
-                  : 'bg-white text-[#6B6B6F] border-[#E8E6E0]'
+                  : 'bg-white text-[#6B6B6F] border-[#D6D2C7]'
               }`}
             >
               Hours Onsite
@@ -181,7 +181,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
 
             {/* Start + End times */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white border border-[#E8E6E0] rounded-xl p-3.5">
+              <div className="bg-white border border-[#D6D2C7] rounded-xl p-3.5">
                 <label className="block text-[10px] font-bold text-[#6B6B6F] tracking-[0.12em] mb-2">START</label>
                 <input
                   type="time"
@@ -213,7 +213,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
                     className={`flex-1 py-2.5 rounded-lg text-[13px] font-bold border transition-colors ${
                       breakMins === mins
                         ? 'bg-[#111111] text-[#F39200] border-[#111111]'
-                        : 'bg-white text-[#6B6B6F] border-[#E8E6E0]'
+                        : 'bg-white text-[#6B6B6F] border-[#D6D2C7]'
                     }`}
                   >
                     {mins === 0 ? 'None' : `${mins}m`}
@@ -228,7 +228,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
                   step="5"
                   value={breakMins}
                   onChange={e => setBreakMins(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-24 border border-[#E8E6E0] bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#F39200]"
+                  className="w-24 border border-[#D6D2C7] bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#F39200]"
                 />
                 <span className="text-sm text-[#6B6B6F]">minutes (custom)</span>
               </div>
@@ -270,10 +270,10 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
               </p>
               {isOvertime ? (
                 <p className="text-[11px] text-[#A86B0C] font-medium">
-                  {(totalHours - 8).toFixed(2)}h overtime — requires manager approval
+                  {(totalHours - 8).toFixed(2)}h overtime â€” requires manager approval
                 </p>
               ) : (
-                <p className="text-[11px] text-[#BDBDC0]">Standard hours · under overtime threshold</p>
+                <p className="text-[11px] text-[#BDBDC0]">Standard hours Â· under overtime threshold</p>
               )}
             </div>
           </div>
@@ -288,7 +288,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
             <select
               value={actingRole}
               onChange={e => setActingRole(e.target.value)}
-              className="w-full bg-white border border-[#E8E6E0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#F39200]"
+              className="w-full bg-white border border-[#D6D2C7] rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#F39200]"
             >
               {roleRates.map(r => (
                 <option key={r.role_key} value={r.role_key}>
@@ -312,7 +312,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
             value={notes}
             onChange={e => setNotes(e.target.value)}
             placeholder="Describe the work carried out today, e.g. 'Set out columns for Stage 2, checked as-built levels'"
-            className="w-full border border-[#E8E6E0] bg-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#F39200] resize-none"
+            className="w-full border border-[#D6D2C7] bg-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#F39200] resize-none"
           />
           <p className="text-xs text-[#9A9A9C] mt-1.5">Required. Appears as the Task Description in the timesheet.</p>
         </div>
@@ -343,7 +343,7 @@ export function TimeLogForm({ entryId, staffId, staffRole, workDate, roleRates, 
           {saving
             ? <Loader2 className="h-4 w-4 animate-spin text-[#F39200]" />
             : <CheckIcon />}
-          {saving ? 'Saving…' : existing ? 'Update Time Log' : 'Submit Time Log'}
+          {saving ? 'Savingâ€¦' : existing ? 'Update Time Log' : 'Submit Time Log'}
         </button>
 
         <div className="pb-8" />

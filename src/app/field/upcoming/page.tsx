@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation'
+﻿import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format, parseISO } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
@@ -88,15 +88,15 @@ export default async function FieldUpcomingPage() {
 
   const formatDateHeading = (isoDate: string) => {
     const d = parseISO(isoDate + 'T00:00:00')
-    if (isoDate === todayIso)    return `Today · ${format(d, 'EEE d MMM')}`
-    if (isoDate === tomorrowIso) return `Tomorrow · ${format(d, 'EEE d MMM')}`
+    if (isoDate === todayIso)    return `Today Â· ${format(d, 'EEE d MMM')}`
+    if (isoDate === tomorrowIso) return `Tomorrow Â· ${format(d, 'EEE d MMM')}`
     return format(d, 'EEEE, d MMMM yyyy')
   }
 
   return (
-    <div className="flex flex-col flex-1 bg-[#F5F4F1]">
+    <div className="flex flex-col flex-1 bg-[#E8E5DC]">
       {/* Top bar */}
-      <div className="bg-[#2F2F33] text-white px-5 pt-safe-top pb-5">
+      <div className="bg-[#1A1A1E] text-white px-5 pt-safe-top pb-5">
         <div className="flex items-center gap-3 mt-2">
           <Link
             href="/field"
@@ -125,7 +125,7 @@ export default async function FieldUpcomingPage() {
         </div>
 
         {entries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center bg-white rounded-xl border border-[#E8E6E0]">
+          <div className="flex flex-col items-center justify-center py-12 text-center bg-white rounded-xl border border-[#D6D2C7]">
             <Inbox className="h-10 w-10 text-[#BDBDC0] mb-3" />
             <p className="text-[#4B4B4F] font-medium">No upcoming jobs</p>
             <p className="text-[#9A9A9C] text-sm mt-1">You have no future jobs assigned right now.</p>
@@ -156,7 +156,7 @@ export default async function FieldUpcomingPage() {
                         <Link
                           key={entry.id}
                           href={`/field/${entry.id}`}
-                          className="block bg-white border border-[#E8E6E0] rounded-xl p-4 hover:border-[#F39200] transition-colors active:scale-[0.99]"
+                          className="block bg-white border border-[#D6D2C7] rounded-xl p-4 hover:border-[#F39200] transition-colors active:scale-[0.99]"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0 space-y-2">
@@ -168,7 +168,7 @@ export default async function FieldUpcomingPage() {
                                   <div className="flex items-center gap-1">
                                     <span className="w-[3px] h-3.5 bg-[#F39200] inline-block" />
                                     <span className="text-xs font-semibold text-[#4B4B4F] uppercase">
-                                      {entry.time_of_day}{entry.hours != null ? ` · ${entry.hours}h sched` : ''}
+                                      {entry.time_of_day}{entry.hours != null ? ` Â· ${entry.hours}h sched` : ''}
                                     </span>
                                   </div>
                                 )}
@@ -210,12 +210,12 @@ export default async function FieldUpcomingPage() {
       </div>
 
       {/* Footer link back to today */}
-      <div className="border-t border-[#E8E6E0] px-5 py-4 pb-safe-bottom bg-white">
+      <div className="border-t border-[#D6D2C7] px-5 py-4 pb-safe-bottom bg-white">
         <Link
           href="/field"
           className="block text-center text-xs text-[#9A9A9C] hover:text-[#4B4B4F] transition-colors"
         >
-          ← Back to today
+          â† Back to today
         </Link>
       </div>
     </div>

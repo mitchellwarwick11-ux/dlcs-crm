@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -95,7 +95,7 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
   async function uploadAll() {
     if (pending.length === 0) return
     const stillCompressing = pending.some(p => p.compressing)
-    if (stillCompressing) { setError('Still compressing — please wait a moment.'); return }
+    if (stillCompressing) { setError('Still compressing â€” please wait a moment.'); return }
 
     setUploading(true)
     setError(null)
@@ -155,10 +155,10 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
   const typeLabelPlural = isDocument ? 'fieldbook pages' : 'photos'
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#F5F4F1]">
+    <div className="flex-1 overflow-y-auto bg-[#E8E5DC]">
       <div className="px-5 py-5 space-y-5">
 
-        {/* Primary CTA — dark pill */}
+        {/* Primary CTA â€” dark pill */}
         <button
           onClick={() => inputRef.current?.click()}
           className="w-full py-4 rounded-full bg-[#111111] hover:bg-black text-white font-semibold text-sm flex items-center justify-center gap-2.5 transition-colors active:scale-[0.98]"
@@ -186,7 +186,7 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
             </p>
             <div className="space-y-3">
               {pending.map(item => (
-                <div key={item.id} className="bg-white border border-[#E8E6E0] rounded-xl overflow-hidden">
+                <div key={item.id} className="bg-white border border-[#D6D2C7] rounded-xl overflow-hidden">
                   {/* Preview */}
                   <div className="relative h-32 bg-[#EFEDE6]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -200,7 +200,7 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
                     {item.compressing && (
                       <div className="absolute inset-0 bg-[#111111]/70 flex items-center justify-center gap-2">
                         <Loader2 className="h-5 w-5 animate-spin text-[#F39200]" />
-                        <span className="text-xs font-semibold text-[#F39200]">Compressing…</span>
+                        <span className="text-xs font-semibold text-[#F39200]">Compressingâ€¦</span>
                       </div>
                     )}
                   </div>
@@ -209,7 +209,7 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
                     {/* Size indicator */}
                     {!item.compressing && item.compressedSize && (
                       <p className="text-[10px] text-[#9A9A9C]">
-                        {formatBytes(item.originalSize)} → {formatBytes(item.compressedSize)}
+                        {formatBytes(item.originalSize)} â†’ {formatBytes(item.compressedSize)}
                         {' '}({Math.round(item.compressedSize / item.originalSize * 100)}% of original)
                       </p>
                     )}
@@ -220,7 +220,7 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
                       value={item.caption}
                       onChange={e => updateCaption(item.id, e.target.value)}
                       placeholder={`Add a caption (optional)`}
-                      className="w-full text-sm border border-[#E8E6E0] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#F39200]"
+                      className="w-full text-sm border border-[#D6D2C7] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#F39200]"
                     />
                   </div>
                 </div>
@@ -240,7 +240,7 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
               className="mt-3 w-full py-3.5 bg-[#111111] hover:bg-black disabled:bg-[#4B4B4F] text-white font-semibold rounded-full text-sm transition-colors flex items-center justify-center gap-2"
             >
               {uploading
-                ? <><Loader2 className="h-4 w-4 animate-spin text-[#F39200]" /> Uploading…</>
+                ? <><Loader2 className="h-4 w-4 animate-spin text-[#F39200]" /> Uploadingâ€¦</>
                 : <><Upload className="h-4 w-4 text-[#F39200]" /> Upload {pending.length} {pending.length === 1 ? typeLabel : typeLabelPlural}</>
               }
             </button>
@@ -252,13 +252,13 @@ export function PhotoUpload({ entryId, projectId, staffId, type, existingPhotos,
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-[11px] font-bold text-[#F39200] tracking-[0.18em] uppercase">
-                Uploaded · {existingPhotos.length} {existingPhotos.length === 1 ? typeLabel : typeLabelPlural}
+                Uploaded Â· {existingPhotos.length} {existingPhotos.length === 1 ? typeLabel : typeLabelPlural}
               </p>
               <p className="text-[10px] text-[#9A9A9C]">Compressed ~20%</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {existingPhotos.map(photo => (
-                <div key={photo.id} className="relative bg-white rounded-xl overflow-hidden border border-[#E8E6E0]">
+                <div key={photo.id} className="relative bg-white rounded-xl overflow-hidden border border-[#D6D2C7]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`${supabaseUrl}/storage/v1/object/authenticated/field-photos/${photo.storage_path}`}

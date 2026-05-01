@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useTransition, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -164,7 +164,7 @@ export function InteractiveChecklist({
   }
 
   return (
-    <div className="bg-white border border-[#E8E6E0] rounded-xl overflow-hidden">
+    <div className="bg-white border border-[#D6D2C7] rounded-xl overflow-hidden">
       <div className="flex items-center gap-2.5 px-4 py-3 bg-[#FAF8F3] border-b border-[#EFEDE6]">
         <div className="w-[3px] h-3.5 bg-[#F39200]" />
         <p className="text-[13px] font-bold text-[#111111] flex-1">{title}</p>
@@ -190,7 +190,7 @@ export function InteractiveChecklist({
                   className={`flex-1 h-9 rounded-lg text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-colors border ${
                     r.answer === 'yes'
                       ? 'bg-[#1F7A3F] text-white border-[#1F7A3F]'
-                      : 'bg-white text-[#4B4B4F] border-[#CFCDC5] active:bg-[#F5F4F1]'
+                      : 'bg-white text-[#4B4B4F] border-[#CFCDC5] active:bg-[#E8E5DC]'
                   } ${isSubmitted ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   <Check className="h-3.5 w-3.5" strokeWidth={r.answer === 'yes' ? 3 : 2} />
@@ -203,7 +203,7 @@ export function InteractiveChecklist({
                   className={`flex-1 h-9 rounded-lg text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-colors border ${
                     r.answer === 'no'
                       ? 'bg-[#A31D1D] text-white border-[#A31D1D]'
-                      : 'bg-white text-[#4B4B4F] border-[#CFCDC5] active:bg-[#F5F4F1]'
+                      : 'bg-white text-[#4B4B4F] border-[#CFCDC5] active:bg-[#E8E5DC]'
                   } ${isSubmitted ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   <X className="h-3.5 w-3.5" strokeWidth={r.answer === 'no' ? 3 : 2} />
@@ -215,7 +215,7 @@ export function InteractiveChecklist({
                   className={`h-9 w-9 rounded-lg flex items-center justify-center transition-colors border ${
                     commentOpen || hasComment
                       ? 'bg-[#F39200] text-white border-[#F39200]'
-                      : 'bg-white text-[#6B6B6F] border-[#CFCDC5] active:bg-[#F5F4F1]'
+                      : 'bg-white text-[#6B6B6F] border-[#CFCDC5] active:bg-[#E8E5DC]'
                   }`}
                   title={hasComment ? 'Comment added' : 'Add comment'}
                 >
@@ -228,9 +228,9 @@ export function InteractiveChecklist({
                   onChange={e => setComment(item.id, e.target.value)}
                   onBlur={() => commitComment(item.id)}
                   disabled={isSubmitted}
-                  placeholder="Add a comment…"
+                  placeholder="Add a commentâ€¦"
                   rows={2}
-                  className="mt-2 w-full text-[13px] text-[#111111] placeholder:text-[#9A9A9C] bg-[#FAF8F3] border border-[#E8E6E0] rounded-lg px-3 py-2 resize-y disabled:opacity-60"
+                  className="mt-2 w-full text-[13px] text-[#111111] placeholder:text-[#9A9A9C] bg-[#FAF8F3] border border-[#D6D2C7] rounded-lg px-3 py-2 resize-y disabled:opacity-60"
                 />
               )}
             </div>
@@ -244,14 +244,14 @@ export function InteractiveChecklist({
             <div className="flex items-center justify-center gap-2 py-2.5 px-3 bg-[#E7F3EC] border border-[#BDE0C8] rounded-xl">
               <CheckCircle2 className="h-4 w-4 text-[#1F7A3F]" />
               <span className="text-[12px] font-semibold text-[#1F7A3F]">
-                Submitted — saved to project documents
+                Submitted â€” saved to project documents
               </span>
             </div>
             <button
               onClick={handleEdit}
               className="w-full text-[11px] text-[#9A9A9C] hover:text-[#4B4B4F] py-1"
             >
-              Need to edit? Reopen for changes →
+              Need to edit? Reopen for changes â†’
             </button>
           </div>
         ) : (
@@ -272,7 +272,7 @@ export function InteractiveChecklist({
               }`}
             >
               {submitting
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin text-[#F39200]" /> Submitting…</>
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin text-[#F39200]" /> Submittingâ€¦</>
                 : <><Send className={`h-3.5 w-3.5 ${allAnswered ? 'text-[#F39200]' : ''}`} /> Submit Checklist</>
               }
             </button>
