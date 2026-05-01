@@ -126,9 +126,7 @@ export default async function PrintQuotePage({
           .page {
             max-width: 210mm;
             margin: 0 auto;
-            min-height: 297mm;
             position: relative;
-            padding-bottom: 60pt;
           }
           /* ======= DARK HEADER ======= */
           .top-bar {
@@ -395,34 +393,11 @@ export default async function PrintQuotePage({
           .sig-name { font-size: 10pt; font-weight: 700; color: var(--ink); margin-top: 4pt; }
           .sig-role { font-size: 8.5pt; color: var(--label); }
           .sig-reg { font-size: 7.5pt; color: var(--label); margin-top: 1pt; }
-          /* ======= BOTTOM BAR ======= */
-          .bottom-bar {
-            position: absolute;
-            bottom: 0;
-            left: 0; right: 0;
-            background: var(--dark);
-            color: #e5e7eb;
-            padding: 10pt 26pt;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 8pt;
-          }
-          .bottom-bar .right {
-            display: flex;
-            align-items: center;
-            gap: 12pt;
-          }
-          .bottom-bar .web { font-weight: 700; letter-spacing: 0.08em; }
-          .bottom-bar .div { width: 1pt; height: 10pt; background: #4b5563; }
-          .bottom-bar .abn { color: #cbd5e1; letter-spacing: 0.05em; }
-          .bottom-bar .accent {
-            width: 16pt; height: 3pt; background: var(--orange); margin-left: 8pt;
-          }
           @media print {
             body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             .no-print { display: none !important; }
-            @page { size: A4; margin: 0; }
+            @page { size: A4; margin: 18mm 0 0 0; }
+            @page :first { margin: 0; }
           }
         `}</style>
 
@@ -511,9 +486,6 @@ export default async function PrintQuotePage({
               </div>
             )}
 
-            {/* spacer */}
-            <div style={{ height: 10 }} />
-
             {/* ===== QUOTE TASKS (new hierarchical body) ===== */}
             {quoteTasks.length > 0 ? (
               quoteTasks.map((task, ti) => {
@@ -521,10 +493,10 @@ export default async function PrintQuotePage({
                   .map(h => ({ heading: h.heading, lines: (h.lines || []).filter(l => l && l.trim()) }))
                   .filter(h => h.heading || h.lines.length > 0)
                 return (
-                  <div key={ti} style={{ borderBottom: '0.5pt solid var(--rule)', paddingBottom: '6pt', marginBottom: '2pt' }}>
+                  <div key={ti} style={{ borderBottom: '0.5pt solid var(--rule)', paddingTop: '12pt', paddingBottom: '8pt' }}>
                     {/* Task title (starts at the far-left gutter, spans across content area) + price */}
                     {(task.title || (task.price != null && task.price > 0)) && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', columnGap: '18pt', paddingTop: '4pt', paddingBottom: '2pt' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', columnGap: '18pt', paddingTop: 0, paddingBottom: '2pt' }}>
                         <div style={{ fontWeight: 800, fontSize: '10.5pt', color: '#1a1a1a', textTransform: 'uppercase', letterSpacing: '0.02em', lineHeight: 1.3 }}>
                           {task.title || ''}
                         </div>
@@ -637,17 +609,6 @@ export default async function PrintQuotePage({
                 {q.notes}
               </div>
             )}
-          </div>
-
-          {/* ===== DARK BOTTOM BAR ===== */}
-          <div className="bottom-bar">
-            <div>Page 1 of 1</div>
-            <div className="right">
-              <span className="web">{website}</span>
-              <span className="div" />
-              <span className="abn">ABN {abn}</span>
-              <span className="accent" />
-            </div>
           </div>
 
       </div>
